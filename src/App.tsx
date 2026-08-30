@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as Blockly from 'blockly'
 import {
   extractSteps,
-  initialWorkspace,
+  missions,
   registerBlocks,
   stepLabel,
   toolbox,
@@ -12,22 +12,59 @@ import {
 type RunState = 'idle' | 'running' | 'complete' | 'warning'
 
 type Point = { x: number; y: number }
+type FlightState = Point & { altitude: number; heading: number }
 
-function buildFlightPath(steps: DroneStep[]) {
-  const points: Point[] = [{ x: 50, y: 76 }]
-  let point = { ...points[0] }
+const initialFlightState: FlightState = { x: 50, y: 76, altitude: 0, heading: 0 }
+
+function normalizeHeading(heading: number) {
+  return ((heading % 360) + 360) % 360
+}
+
+function simulateFlight(steps: DroneStep[]) {
+  const states: FlightState[] = []
+  const state = { ...initialFlightState }
 
   for (const step of steps) {
-    if (step.type !== 'move') continue
-    const distance = step.distance / 100 * 9
-    if (step.direction === 'forward') point.y -= distance
-    if (step.direction === 'back') point.y += distance
-    if (step.direction === 'left') point.x -= distance
-    if (step.direction === 'right') point.x += distance
-    points.push({ x: Math.max(7, Math.min(93, point.x)), y: Math.max(8, Math.min(88, point.y)) })
+    if (step.type === 'takeoff') state.altitude = 80
+    if (step.type === 'land') state.altitude = 0
+    if (step.type === 'turn') {
+      state.heading = normalizeHeading(
+        state.heading + (step.direction === 'right' ? step.degrees : -step.degrees),
+      )
+    }
+
+    if (step.type === 'move') {
+      if (step.direction === 'up') state.altitude = Math.min(250, state.altitude + step.distance)
+      if (step.direction === 'down') state.altitude = Math.max(0, state.altitude - step.distance)
+
+      const distance = step.distance / 100 * 9
+      const radians = state.heading * Math.PI / 180
+      const forward = { x: Math.sin(radians), y: -Math.cos(radians) }
+      const right = { x: Math.cos(radians), y: Math.sin(radians) }
+      if (step.direction === 'forward') {
+        state.x += forward.x * distance
+        state.y += forward.y * distance
+      }
+      if (step.direction === 'back') {
+        state.x -= forward.x * distance
+        state.y -= forward.y * distance
+      }
+      if (step.direction === 'left') {
+        state.x -= right.x * distance
+        state.y -= right.y * distance
+      }
+      if (step.direction === 'right') {
+        state.x += right.x * distance
+        state.y += right.y * distance
+      }
+      state.x = Math.max(7, Math.min(93, state.x))
+      state.y = Math.max(8, Math.min(88, state.y))
+    }
+
+    states.push({ ...state })
   }
 
-  return points
+  return states
 }
 
 function pathToSvg(points: Point[]) {
@@ -43,6 +80,11 @@ function App() {
   const [activeStep, setActiveStep] = useState(-1)
   const [isConnected, setIsConnected] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
+  const [missionId, setMissionId] = useState<typeof missions[number]['id']>(missions[0].id)
+  const [completedMissionIds, setCompletedMissionIds] = useState<string[]>([])
+  const missionWorkspacesRef = useRef<
+    Record<string, ReturnType<typeof Blockly.serialization.workspaces.save>>
+  >({})
 
   useEffect(() => {
     registerBlocks()
@@ -55,7 +97,6 @@ function App() {
       trashcan: true,
       theme: Blockly.Themes.Classic,
     })
-    Blockly.serialization.workspaces.load(initialWorkspace, workspace)
     workspace.addChangeListener(() => setSteps(extractSteps(workspace)))
     workspaceRef.current = workspace
     setSteps(extractSteps(workspace))
@@ -70,16 +111,41 @@ function App() {
     const land = steps.findIndex((step) => step.type === 'land')
     return takeoff >= 0 && land > takeoff
   }, [steps])
-  const path = useMemo(() => buildFlightPath(steps), [steps])
-  const moveCount = steps.filter((step) => step.type === 'move').length
+  const flightStates = useMemo(() => simulateFlight(steps), [steps])
+  const path = useMemo(() => [initialFlightState, ...flightStates], [flightStates])
   const photoCount = steps.filter((step) => step.type === 'photo').length
-  const displayPoint = path[Math.min(Math.max(activeStep, 0), path.length - 1)] ?? path[0]
+  const selectedMission = missions.find((mission) => mission.id === missionId) ?? missions[0]
+  const displayState = activeStep >= 0
+    ? flightStates[Math.min(activeStep, flightStates.length - 1)] ?? initialFlightState
+    : initialFlightState
 
   function resetRun() {
     window.clearInterval(timerRef.current)
     setIsRunning(false)
     setActiveStep(-1)
     setRunState('idle')
+  }
+
+  function selectMission(nextMissionId: typeof missions[number]['id']) {
+    const mission = missions.find((item) => item.id === nextMissionId)
+    const workspace = workspaceRef.current
+    if (!mission || !workspace) return
+
+    missionWorkspacesRef.current[missionId] = Blockly.serialization.workspaces.save(workspace)
+    resetRun()
+    setMissionId(mission.id)
+    workspace.clear()
+    const savedWorkspace = missionWorkspacesRef.current[mission.id]
+    if (savedWorkspace) {
+      Blockly.serialization.workspaces.load(savedWorkspace, workspace)
+    }
+    setSteps(extractSteps(workspace))
+  }
+
+  function clearWorkspace() {
+    resetRun()
+    workspaceRef.current?.clear()
+    setSteps([])
   }
 
   function runSimulation() {
@@ -99,6 +165,7 @@ function App() {
         setActiveStep(steps.length - 1)
         setIsRunning(false)
         setRunState('complete')
+        setCompletedMissionIds((ids) => ids.includes(missionId) ? ids : [...ids, missionId])
         return
       }
       setActiveStep(current)
@@ -116,30 +183,40 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand"><span className="brand-mark">M</span><span>Muttello2</span></div>
-        <div className="lesson-title"><span>ミッション 1</span> 体育館をまっすぐ飛ぼう</div>
+        <div className="lesson-title"><span>ミッション {selectedMission.number}</span> 体育館を{selectedMission.shortTitle}</div>
         <div className={`connection ${isConnected ? 'connected' : ''}`}>
           <span className="connection-dot" />
           {isConnected ? 'Tello EDU 接続済み' : 'シミュレーション'}
-          <button className="link-button" onClick={() => setIsConnected((connected) => !connected)}>
-            {isConnected ? '切断' : '先生のTelloを確認'}
-          </button>
         </div>
       </header>
 
       <section className="workspace-layout">
         <aside className="mission-panel">
           <div className="section-kicker">きょうのミッション</div>
-          <h1>写真をとって<br />帰ってこよう</h1>
-          <p>離陸して前に進み、写真をとってから安全に着陸しよう。</p>
+          <h1>{selectedMission.title}</h1>
+          <p>{selectedMission.description}</p>
           <div className="goal-card">
-            <span className="goal-icon">🎯</span>
-            <div><strong>ゴール</strong><br />写真を1まい保存する</div>
+            <span className="goal-icon">{selectedMission.icon}</span>
+            <div><strong>ゴール</strong><br />{selectedMission.goal}</div>
+          </div>
+          <div className="mission-picker">
+            <div className="mission-picker-title">ミッションをえらぶ</div>
+            {missions.map((mission) => (
+              <button
+                key={mission.id}
+                className={`mission-option ${mission.id === missionId ? 'selected' : ''}`}
+                onClick={() => selectMission(mission.id)}
+                disabled={isRunning}
+              >
+                <span className="mission-number">{completedMissionIds.includes(mission.id) ? '✓' : mission.number}</span>
+                <span>{mission.shortTitle}</span>
+              </button>
+            ))}
           </div>
           <div className="safety-note">
             <span>🛡️</span>
-            <p><strong>安全のやくそく</strong><br />先生が「実機で飛ばす」を押すまで、ドローンは飛びません。</p>
+            <p><strong>安全のやくそく</strong><br />先生とドローンに接続してから「飛ばす」を押そう。</p>
           </div>
-          <button className="outline-button" onClick={() => workspaceRef.current?.clear()}>ブロックを消す</button>
         </aside>
 
         <section className="editor-panel">
@@ -148,6 +225,9 @@ function App() {
             <span className="block-count">{steps.length} ブロック</span>
           </div>
           <div ref={blocklyRef} className="blockly-canvas" aria-label="プログラムを作るブロックエディタ" />
+          <button className="palette-clear-button" onClick={clearWorkspace} disabled={isRunning}>
+            🗑 すべてのブロックを消す
+          </button>
           <div className="execution-bar">
             <div className={`execution-status ${runState}`}><span />{programStatus()}</div>
             <div className="execution-actions">
@@ -166,12 +246,15 @@ function App() {
               <path d={pathToSvg(path)} />
               {path.map((point, index) => <circle key={`${point.x}-${point.y}-${index}`} cx={point.x} cy={point.y} r="1.2" />)}
             </svg>
-            <div className="drone" style={{ left: `${displayPoint.x}%`, top: `${displayPoint.y}%` }}>✦</div>
+            <div className="drone" style={{ left: `${displayState.x}%`, top: `${displayState.y}%` }}>
+              <span className="drone-direction" style={{ transform: `rotate(${displayState.heading}deg)` }}>▲</span>
+            </div>
+            <div className="altitude-label" style={{ left: `${displayState.x}%`, top: `${displayState.y}%` }}>{displayState.altitude} cm</div>
           </div>
           <div className="telemetry">
-            <div><span>高さ</span><strong>{activeStep >= 0 ? '80 cm' : '0 cm'}</strong></div>
+            <div><span>高さ</span><strong>{displayState.altitude} cm</strong></div>
             <div><span>写真</span><strong>{runState === 'complete' ? `${photoCount} まい` : '0 まい'}</strong></div>
-            <div><span>動き</span><strong>{moveCount} かい</strong></div>
+            <div><span>向き</span><strong>{displayState.heading}°</strong></div>
           </div>
           <div className="step-list">
             <div className="step-list-title">実行するじゅんばん</div>
@@ -181,7 +264,12 @@ function App() {
               </div>
             ))}
           </div>
-          <button className="real-flight-button" disabled={!isConnected || !isSafeProgram || isRunning}>実機で飛ばす <span>先生用</span></button>
+          <div className="drone-actions">
+            <button className="connect-button" onClick={() => setIsConnected((connected) => !connected)}>
+              {isConnected ? '接続を切る' : 'ドローンに接続する'}
+            </button>
+            <button className="fly-button" onClick={runSimulation} disabled={!isConnected || !isSafeProgram || isRunning}>飛ばす</button>
+          </div>
         </aside>
       </section>
     </main>

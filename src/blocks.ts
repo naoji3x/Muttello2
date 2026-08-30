@@ -114,39 +114,35 @@ export const toolbox: Blockly.utils.toolbox.ToolboxDefinition = {
   ],
 }
 
-export const initialWorkspace = {
-  blocks: {
-    languageVersion: 0,
-    blocks: [
-      {
-        id: 'start',
-        type: 'tello_start',
-        x: 48,
-        y: 52,
-        next: {
-          block: {
-            id: 'takeoff',
-            type: 'tello_takeoff',
-            next: {
-              block: {
-                id: 'move',
-                type: 'tello_move',
-                fields: { DIRECTION: 'forward', DISTANCE: 100 },
-                next: {
-                  block: {
-                    id: 'photo',
-                    type: 'tello_photo',
-                    next: { block: { id: 'land', type: 'tello_land' } },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    ],
+export const missions = [
+  {
+    id: 'photo',
+    number: 1,
+    title: '写真をとって帰ろう',
+    shortTitle: 'まっすぐ飛ぼう',
+    description: '離陸して前に進み、写真をとってから安全に着陸しよう。',
+    goal: '写真を1まい保存する',
+    icon: '📷',
   },
-}
+  {
+    id: 'turn',
+    number: 2,
+    title: '曲がってゴールへ行こう',
+    shortTitle: '右に曲がろう',
+    description: '前へ進んで右に90度回り、ゴールへ向かおう。',
+    goal: '曲がり角を通って着陸する',
+    icon: '↱',
+  },
+  {
+    id: 'high-photo',
+    number: 3,
+    title: '高いところで写真をとろう',
+    shortTitle: '上へ飛ぼう',
+    description: '高く上がって写真をとり、元の高さまで戻って着陸しよう。',
+    goal: '高さ180cmで写真をとる',
+    icon: '☁️',
+  },
+] as const
 
 let isDefined = false
 

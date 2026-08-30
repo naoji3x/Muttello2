@@ -18,7 +18,6 @@ button { font: inherit; cursor: pointer; }
 .connection { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #d5e1eb; }
 .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: #b5c4ce; }
 .connection.connected .connection-dot { background: #49d895; box-shadow: 0 0 0 4px #49d89525; }
-.link-button { margin-left: 4px; border: 1px solid #ffffff55; border-radius: 7px; background: transparent; color: white; padding: 6px 9px; font-size: 12px; }
 
 .workspace-layout { display: grid; grid-template-columns: 230px minmax(480px, 1fr) 340px; gap: 18px; height: calc(100vh - 70px); min-height: 680px; padding: 18px; }
 .mission-panel, .editor-panel, .flight-panel { min-height: 0; border: 1px solid #dce7ef; border-radius: 16px; background: white; box-shadow: 0 3px 13px #23476d0d; }
@@ -30,15 +29,25 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .mission-panel > p { color: #60788a; font-size: 13px; line-height: 1.7; }
 .goal-card { display: flex; gap: 10px; margin-top: 11px; padding: 13px; border-radius: 12px; background: #fff7e4; color: #6b5015; font-size: 13px; line-height: 1.55; }
 .goal-icon { font-size: 22px; }
+.mission-picker { margin-top: 16px; padding-top: 15px; border-top: 1px solid #e7eef3; }
+.mission-picker-title { margin-bottom: 8px; color: #5b7485; font-size: 11px; font-weight: 800; letter-spacing: .04em; }
+.mission-option { display: flex; align-items: center; width: 100%; gap: 8px; margin-bottom: 6px; padding: 8px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #526c7e; text-align: left; font-size: 12px; font-weight: 700; }
+.mission-option:hover { background: #f3f8fb; }
+.mission-option.selected { border-color: #b7d8e8; background: #eaf6fb; color: #176891; }
+.mission-option:disabled { cursor: not-allowed; opacity: .55; }
+.mission-number { display: grid; place-items: center; flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; background: #e1ebf0; color: #517082; font-size: 10px; }
+.mission-option.selected .mission-number { background: #2f91bd; color: white; }
 .safety-note { display: flex; gap: 9px; margin-top: 16px; padding: 12px; border-radius: 12px; background: #eef7ff; color: #2e6385; font-size: 12px; }
 .safety-note p { margin: 0; line-height: 1.55; }
-.outline-button { margin-top: auto; padding: 10px; border: 1px solid #d5e2ea; border-radius: 9px; background: white; color: #557083; font-size: 12px; }
 
-.editor-panel { display: flex; flex-direction: column; overflow: hidden; }
+.editor-panel { position: relative; display: flex; flex-direction: column; overflow: hidden; }
 .panel-heading { display: flex; justify-content: space-between; align-items: center; min-height: 85px; padding: 17px 22px 13px; border-bottom: 1px solid #e5edf2; }
 .panel-heading.compact { min-height: 80px; padding: 17px 18px 13px; }
 .block-count { padding: 7px 10px; border-radius: 20px; background: #eff5f8; color: #5c7485; font-size: 12px; font-weight: 700; }
 .blockly-canvas { flex: 1; min-height: 390px; }
+.palette-clear-button { position: absolute; z-index: 1000000; bottom: 73px; left: 14px; width: 166px; border: 1px solid #c8d8e3; border-radius: 9px; padding: 9px 7px; background: #fff; color: #527083; font-size: 12px; font-weight: 800; box-shadow: 0 2px 5px #23476d18; }
+.palette-clear-button:hover:not(:disabled) { background: #fff4f2; border-color: #e8a398; color: #b95248; }
+.palette-clear-button:disabled { opacity: .5; }
 .execution-bar { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 13px 18px; border-top: 1px solid #e5edf2; }
 .execution-status { display: flex; align-items: center; gap: 8px; color: #527083; font-size: 13px; font-weight: 700; }
 .execution-status span { width: 9px; height: 9px; border-radius: 50%; background: #f3b52e; }
@@ -61,6 +70,8 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .flight-path path { fill: none; stroke: #2f8fbd; stroke-width: 1.3; stroke-dasharray: 2 2; }
 .flight-path circle { fill: white; stroke: #2f8fbd; stroke-width: .7; }
 .drone { position: absolute; z-index: 3; display: grid; place-items: center; width: 32px; height: 32px; transform: translate(-50%, -50%); border-radius: 50%; background: #123e5d; color: #ffce4c; box-shadow: 0 4px 9px #123e5d44; transition: left .65s ease, top .65s ease; }
+.drone-direction { display: block; color: #ffce4c; font-size: 19px; line-height: 1; transition: transform .65s ease; }
+.altitude-label { position: absolute; z-index: 4; transform: translate(18px, -25px); padding: 3px 6px; border-radius: 5px; background: #123e5d; color: white; font-size: 10px; font-weight: 800; white-space: nowrap; transition: left .65s ease, top .65s ease; }
 .telemetry { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; padding: 14px 18px; }
 .telemetry div { padding: 9px 7px; border-radius: 8px; background: #f2f6f8; text-align: center; }
 .telemetry span, .telemetry strong { display: block; }.telemetry span { color: #738a99; font-size: 10px; }.telemetry strong { margin-top: 4px; color: #24475f; font-size: 12px; }
@@ -70,6 +81,9 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .step-row span { display: grid; place-items: center; flex: 0 0 auto; width: 19px; height: 19px; border-radius: 50%; background: #e8eff3; color: #547083; font-size: 10px; font-weight: 800; }
 .step-row.active { background: #e6f6f1; color: #087b61; font-weight: 800; }.step-row.active span { background: #0c9b76; color: white; }
 .empty-steps { color: #90a0aa; font-size: 12px; }
-.real-flight-button { width: calc(100% - 36px); margin: 17px 18px; padding: 11px; border: 0; border-radius: 9px; background: #e86457; color: white; font-size: 13px; font-weight: 800; box-shadow: 0 3px 0 #bf493f; }
-.real-flight-button span { margin-left: 5px; padding: 3px 6px; border-radius: 5px; background: #ffffff30; font-size: 10px; }.real-flight-button:disabled { cursor: not-allowed; background: #cbd7de; box-shadow: none; }
+.drone-actions { display: grid; grid-template-columns: 1.35fr .65fr; gap: 8px; margin: 17px 18px; }
+.connect-button, .fly-button { padding: 11px 8px; border: 0; border-radius: 9px; color: white; font-size: 12px; font-weight: 800; }
+.connect-button { background: #267ca9; box-shadow: 0 3px 0 #1e658a; }
+.fly-button { background: #e86457; box-shadow: 0 3px 0 #bf493f; }
+.fly-button:disabled { cursor: not-allowed; background: #cbd7de; box-shadow: none; }
 @keyframes pulse { 50% { transform: scale(1.45); opacity: .55; } }
