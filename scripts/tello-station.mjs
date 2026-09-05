@@ -2,10 +2,12 @@ import dgram from 'node:dgram'
 import { isIPv4 } from 'node:net'
 import { parseArgs } from 'node:util'
 import { pathToFileURL } from 'node:url'
+import envConfig from '../shared/env.cjs'
 
 const help = `Tello EDUを地面に置き、PCを機体のWi-Fiに接続して実行してください。
 npm run tello:station -- --ssid <SSID> --password <PASSWORD>
-環境変数 TELLO_SSID / TELLO_PASSWORD も使用できます（引数優先）。
+カレントフォルダの.envと環境変数 TELLO_IP / TELLO_SSID / TELLO_PASSWORD に対応。
+優先順位: 引数 > 環境変数 > .env。
 --tello-ip <IPv4>  設定前の機体IP（既定: 192.168.10.1）
 --help             この説明を表示`
 
@@ -14,7 +16,7 @@ export function readOptions(args, env = process.env) {
   try {
     ;({ values } = parseArgs({ args, options: {
       ssid: { type: 'string' }, password: { type: 'string' },
-      'tello-ip': { type: 'string', default: '192.168.10.1' },
+      'tello-ip': { type: 'string' },
       help: { type: 'boolean', default: false },
     } }))
   } catch {
@@ -30,8 +32,9 @@ export function readOptions(args, env = process.env) {
     }
   }
   if (Buffer.byteLength(ssid, 'utf8') > 32) throw new Error('SSIDはUTF-8で32バイト以内にしてください。')
-  if (!isIPv4(values['tello-ip'])) throw new Error('--tello-ipにはIPv4を指定してください。')
-  return { ssid, password, ip: values['tello-ip'] }
+  const ip = values['tello-ip'] ?? env.TELLO_IP ?? '192.168.10.1'
+  if (!isIPv4(ip)) throw new Error('--tello-ip または TELLO_IP にはIPv4を指定してください。')
+  return { ssid, password, ip }
 }
 
 export async function configureStation({ ssid, password, ip }, {
@@ -87,7 +90,7 @@ export async function configureStation({ ssid, password, ip }, {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const options = readOptions(process.argv.slice(2))
+    const options = readOptions(process.argv.slice(2), envConfig.readTelloEnv())
     if (options.help) console.log(help)
     else {
       console.log('Tello EDUへステーションモード設定を送信します。')

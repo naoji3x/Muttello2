@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('node:path')
 
 const { Tello, parseAddress } = require('./tello.cjs')
+const { readTelloEnv } = require('../shared/env.cjs')
 const { appendFileSync } = require('node:fs')
 let tello
 let mainWindow
@@ -56,7 +57,10 @@ function createWindow() {
 app.whenReady().then(async () => {
   const { validateProgram } = await import('../shared/safety.js')
   let ip
-  try { ip = parseAddress(process.argv) } catch (error) { dialog.showErrorBox('起動引数エラー', error.message); app.quit(); return }
+  try {
+    const directory = app.isPackaged ? path.dirname(app.getPath('exe')) : process.cwd()
+    ip = parseAddress(process.argv, readTelloEnv(directory))
+  } catch (error) { dialog.showErrorBox('接続設定エラー', error.message); app.quit(); return }
   tello = new Tello(ip, validateProgram, { log: (kind, value) => {
     try { appendFileSync(path.join(app.getPath('userData'), 'tello.log'), JSON.stringify({ time: new Date().toISOString(), kind, value }) + '\n') } catch (error) { console.error('ログ保存失敗', error.message) }
   } })

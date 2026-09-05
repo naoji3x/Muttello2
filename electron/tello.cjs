@@ -1,9 +1,13 @@
 const dgram = require('node:dgram')
 const { isIPv4 } = require('node:net')
 
-function parseAddress(args) {
+function parseAddress(args, env = process.env) {
   const positions = args.flatMap((arg, i) => arg === '--tello-ip' ? [i] : [])
-  if (!positions.length) return null
+  if (!positions.length) {
+    if (!env.TELLO_IP) return null
+    if (!isIPv4(env.TELLO_IP)) throw new Error('TELLO_IP にIPv4アドレスを指定してください。')
+    return env.TELLO_IP
+  }
   const ip = args[positions[0] + 1]
   if (positions.length !== 1 || !ip || !isIPv4(ip)) throw new Error('--tello-ip にIPv4アドレスを1つ指定してください。')
   return ip
@@ -31,7 +35,7 @@ class Tello {
     this.log('failure', message)
   }
   async connect() {
-    if (!this.ip) throw new Error('起動時に --tello-ip を指定してください。')
+    if (!this.ip) throw new Error('--tello-ip または .env の TELLO_IP を指定してください。')
     if (this.closed || ['uncertain', 'emergency-stop'].includes(this.state.execution) || this.state.flight === 'airborne' || this.busy || this.landing || this.connecting) throw new Error('機体を確認し、着陸後にアプリを再起動してください。')
     if (this.state.connected) return this.snapshot()
     this.connecting = true

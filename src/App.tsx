@@ -288,7 +288,7 @@ function App() {
           </div>
           <section className="hardware-status" aria-live="polite">
             <strong>実機の状態</strong>
-            <p>{window.muttello2 ? (drone?.configured ? 'Tello EDU' : '起動時に --tello-ip が必要です') : 'Web版はシミュレーション専用です'}</p>
+            <p>{window.muttello2 ? (drone?.configured ? 'Tello EDU' : '.env の TELLO_IP または --tello-ip を設定してください') : 'Web版はシミュレーション専用です'}</p>
             <p>電池: {drone?.battery ?? '—'}% ／ 高さ: {drone?.height ?? '—'}cm</p>
             <p>飛行: {({ grounded: '着陸', airborne: '飛行中', 'taking-off': '離陸中', landing: '着陸中', unknown: '不明' } as Record<string, string>)[drone?.flight ?? 'unknown']}</p>
             <p>実行: {({ idle: '待機', running: '実行中', complete: '完了', cancelled: '中止（着陸は別操作）', landed: '着陸完了', uncertain: '通信・機体状態が不明', 'emergency-stop': '緊急停止送信済み' } as Record<string, string>)[drone?.execution ?? 'idle']}</p>
