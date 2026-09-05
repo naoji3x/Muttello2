@@ -4,3 +4,4 @@ build/
 release/
 *.tsbuildinfo
 .DS_Store
+/tmp
