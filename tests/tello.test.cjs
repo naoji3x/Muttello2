@@ -9,7 +9,7 @@ async function fixture(replies = {}) {
   const tello = new Tello('192.168.1.42', validateProgram, { timeout: 30, staleMs: 500, socketFactory: () => {
     const socket = new EventEmitter()
     socket.bind = () => queueMicrotask(() => socket.emit('listening'))
-    socket.close = () => {}
+    socket.close = callback => { queueMicrotask(() => { socket.emit('close'); callback?.() }) }
     socket.send = (command, port, ip, callback) => {
       commands.push(command); callback?.()
       if (command === 'command') queueMicrotask(() => sockets[1].emit('message', Buffer.from('bat:80;h:0;'), { address: ip }))
@@ -106,4 +106,91 @@ test('emergency interrupts a pending command and prevents reconnection', async (
     assert.equal(tello.state.execution, 'emergency-stop')
     await assert.rejects(tello.connect())
   } finally { tello.close() }
+})
+
+function connectionFixture() {
+  const sockets = [], commands = [], events = []
+  const behavior = { reply: 'ok', telemetry: true, bindError: false }
+  const tello = new Tello('192.168.1.42', () => [], { timeout: 30, staleMs: 60, socketFactory: () => {
+    const socket = new EventEmitter()
+    const index = sockets.length
+    socket.bind = options => {
+      socket.options = options
+      setTimeout(() => {
+        if (behavior.bindError && options.port === 8890) socket.emit('error', new Error('EADDRINUSE'))
+        else { socket.ready = true; events.push(`bind:${index}`); socket.emit('listening') }
+      }, options.port === 8890 ? 1 : 5)
+    }
+    socket.close = callback => setTimeout(() => {
+      socket.closed = true; events.push(`close:${index}`); socket.emit('close'); callback?.()
+    }, 5)
+    socket.send = (command, port, address, callback) => {
+      assert.ok(socket.ready && sockets[index + 1].ready, 'both sockets must bind before SDK entry')
+      commands.push(command); callback?.()
+      if (behavior.telemetry) sockets[index + 1].emit('message', Buffer.from('bat:80;h:0;'), { address })
+      if (behavior.reply) queueMicrotask(() => socket.emit('message', Buffer.from(behavior.reply), { address, port }))
+    }
+    sockets.push(socket); return socket
+  } })
+  return { tello, sockets, commands, events, behavior }
+}
+
+test('failed initial handshake closes both sockets and can reconnect with a fresh SDK handshake', async () => {
+  const { tello, sockets, behavior, commands, events } = connectionFixture()
+  try {
+    behavior.reply = null
+    await assert.rejects(tello.connect(), /応答がありません/)
+    assert.equal(tello.state.execution, 'idle')
+    assert.ok(sockets.every(socket => socket.closed))
+    behavior.reply = 'OK\0'
+    await tello.connect()
+    assert.deepEqual(commands, ['command', 'command'])
+    assert.equal(tello.state.connected, true)
+    assert.ok(events.indexOf('close:0') < events.indexOf('bind:2'))
+    assert.ok(events.indexOf('close:1') < events.indexOf('bind:2'))
+    assert.deepEqual(sockets[3].options, { port: 8890, address: '0.0.0.0', exclusive: true })
+    sockets[1].emit('message', Buffer.from('bat:1;h:900;'), { address: tello.ip })
+    sockets[0].emit('error', new Error('late error'))
+    assert.equal(tello.state.height, 0)
+    assert.equal(tello.state.connected, true)
+  } finally { await tello.close() }
+})
+
+test('port binding failure waits for the other bind and releases ports before retry', async () => {
+  const { tello, sockets, behavior, commands } = connectionFixture()
+  try {
+    behavior.bindError = true
+    await assert.rejects(tello.connect(), /EADDRINUSE/)
+    assert.deepEqual(commands, [])
+    assert.ok(sockets.every(socket => socket.closed))
+    behavior.bindError = false
+    await tello.connect()
+    assert.equal(tello.state.connected, true)
+  } finally { await tello.close() }
+})
+
+test('previous telemetry cannot satisfy a new connection and concurrent connects cannot create extra sockets', async () => {
+  const { tello, sockets, behavior } = connectionFixture()
+  try {
+    await tello.connect()
+    tello.fail('接続断')
+    behavior.telemetry = false
+    const retry = tello.connect()
+    await assert.rejects(tello.connect())
+    await assert.rejects(retry, /状態データ/)
+    assert.equal(sockets.length, 4)
+    assert.equal(tello.state.lastTelemetry, null)
+    assert.equal(tello.state.connected, false)
+  } finally { await tello.close() }
+})
+
+test('closing during bind cancels connection without sending SDK commands', async () => {
+  const { tello, commands } = connectionFixture()
+  const connecting = tello.connect()
+  const rejected = assert.rejects(connecting)
+  await new Promise(resolve => setTimeout(resolve, 1))
+  await tello.close()
+  await rejected
+  assert.deepEqual(commands, [])
+  assert.equal(tello.state.connected, false)
 })

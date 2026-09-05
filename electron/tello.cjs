@@ -21,65 +21,88 @@ class Tello {
   snapshot() { return { ...this.state } }
   fresh() { return this.state.lastTelemetry !== null && Date.now() - this.state.lastTelemetry < this.staleMs }
   fail(message) {
+    if (this.connecting) this.connectionError = new Error(message)
     this.cancelled = true
     this.state.connected = false
     this.state.flight = 'unknown'
-    this.state.execution = 'uncertain'
+    if (this.state.execution !== 'emergency-stop') this.state.execution = this.flightCommandsSent || this.state.execution === 'uncertain' ? 'uncertain' : 'idle'
     this.state.message = message
     this.pending?.reject(new Error(message))
     this.log('failure', message)
   }
   async connect() {
     if (!this.ip) throw new Error('起動時に --tello-ip を指定してください。')
-    if (['uncertain', 'emergency-stop'].includes(this.state.execution) || this.state.flight === 'airborne' || this.busy || this.connecting) throw new Error('機体を確認し、着陸後にアプリを再起動してください。')
+    if (this.closed || ['uncertain', 'emergency-stop'].includes(this.state.execution) || this.state.flight === 'airborne' || this.busy || this.landing || this.connecting) throw new Error('機体を確認し、着陸後にアプリを再起動してください。')
     if (this.state.connected) return this.snapshot()
     this.connecting = true
+    this.connectionError = null
     try {
+      await this.closeSockets()
+      if (this.closed) throw new Error('アプリを終了しました。')
+      Object.assign(this.state, { connected: false, battery: null, height: null, lastTelemetry: null, flight: 'unknown', activeStep: -1, message: '接続しています。' })
       this.commandSocket = this.socketFactory(); this.stateSocket = this.socketFactory()
+      const commandSocket = this.commandSocket, stateSocket = this.stateSocket
       this.commandSocket.on('message', (data, remote) => {
+        if (this.commandSocket !== commandSocket) return
         if (remote.address !== this.ip || remote.port !== 8889) return
-        const reply = data.toString().trim()
+        const reply = data.toString().replace(/[\0\s]+$/u, '').trim().toLowerCase()
         this.log('response', reply)
         if (reply === 'ok') this.pending?.resolve()
-        else if (reply.startsWith('error')) this.pending?.reject(new Error(`機体の応答: ${reply}`))
+        else this.pending?.reject(new Error(`機体の応答: ${reply}`))
       })
       this.stateSocket.on('message', (data, remote) => {
+        if (this.stateSocket !== stateSocket) return
         if (remote.address !== this.ip) return
         const values = Object.fromEntries(data.toString().trim().split(';').filter(Boolean).map(field => field.split(':')))
         const battery = Number(values.bat), height = Number(values.h)
         if (!/^\d+$/.test(values.bat || '') || !/^\d+$/.test(values.h || '') || battery > 100 || height > 10000) return
         Object.assign(this.state, { battery, height, lastTelemetry: Date.now() })
       })
-      for (const socket of [this.commandSocket, this.stateSocket]) socket.on('error', error => this.fail(`UDP通信エラー: ${error.message}`))
-      await Promise.all([this.bind(this.commandSocket, 0), this.bind(this.stateSocket, 8890)])
+      for (const socket of [commandSocket, stateSocket]) socket.on('error', error => {
+        if (socket === this.commandSocket || socket === this.stateSocket) this.fail(`UDP通信エラー: ${error.message}`)
+      })
+      // Let both binds settle before cleanup, including when just one port is busy.
+      const binds = await Promise.allSettled([this.bind(commandSocket, 0), this.bind(stateSocket, 8890)])
+      const failed = binds.find(result => result.status === 'rejected')
+      if (failed) throw new Error(`UDP初期化に失敗しました: ${failed.reason.message}。ほかのTelloアプリを終了して再接続してください。`)
+      if (this.closed || this.commandSocket !== commandSocket) throw new Error('接続を中止しました。')
+      if (this.connectionError) throw this.connectionError
       await this.command('command')
       const deadline = Date.now() + this.staleMs
-      while (!this.fresh() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50))
+      while (!this.closed && !this.connectionError && !this.fresh() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50))
+      if (this.connectionError) throw this.connectionError
+      if (this.closed || this.commandSocket !== commandSocket || this.state.execution === 'emergency-stop') throw new Error('接続を中止しました。')
       if (!this.fresh() || this.state.execution === 'uncertain') throw new Error('状態データを受信できません。Wi-Fiとファイアウォールを確認してください。')
-      if (this.state.height > 10) throw new Error('機体を地面に置いてから接続してください。')
+      if (this.state.height > 10) { this.flightCommandsSent = true; throw new Error('機体を地面に置いてから接続してください。') }
       Object.assign(this.state, { connected: true, flight: 'grounded', message: '接続しました。' })
       return this.snapshot()
     } catch (error) {
-      this.fail(error.message)
-      this.closeSockets()
+      if (this.state.execution !== 'emergency-stop') this.fail(error.message)
+      await this.closeSockets()
       throw error
     } finally { this.connecting = false }
   }
   bind(socket, port) {
     return new Promise((resolve, reject) => {
-      const onError = error => { socket.removeListener('listening', onReady); reject(error) }
-      const onReady = () => { socket.removeListener('error', onError); resolve() }
-      socket.once('error', onError); socket.once('listening', onReady); socket.bind(port)
+      const cleanup = () => { socket.removeListener('listening', onReady); socket.removeListener('error', onError); socket.removeListener('close', onClose) }
+      const onError = error => { cleanup(); reject(error) }
+      const onClose = () => onError(new Error('UDPソケットが閉じられました。'))
+      const onReady = () => { cleanup(); this.log('udp-bound', { port, address: socket.address?.() }); resolve() }
+      socket.once('error', onError); socket.once('listening', onReady); socket.once('close', onClose)
+      try { socket.bind({ port, address: '0.0.0.0', exclusive: true }) } catch (error) { onError(error) }
     })
   }
   command(command) {
     if (this.pending) return Promise.reject(new Error('別のコマンドの応答を待っています。'))
     return new Promise((resolve, reject) => {
-      const finish = error => { clearTimeout(timer); this.pending = null; error ? reject(error) : resolve() }
+      let settled = false
+      const finish = error => { if (settled) return; settled = true; clearTimeout(timer); this.pending = null; error ? reject(error) : resolve() }
       const timer = setTimeout(() => { this.fail('応答がありません。再送せず停止しました。機体を確認してください。') }, this.timeout)
       this.pending = { resolve: () => finish(), reject: finish }
       this.log('command', command)
-      this.commandSocket.send(command, 8889, this.ip, error => { if (error) this.fail(error.message) })
+      if (command !== 'command') this.flightCommandsSent = true
+      const onError = error => { if (error && !settled) this.fail(error.message) }
+      try { this.commandSocket.send(command, 8889, this.ip, onError) } catch (error) { onError(error) }
     })
   }
   async run(program) {
@@ -137,7 +160,15 @@ class Tello {
     await new Promise((resolve, reject) => this.commandSocket.send('emergency', 8889, this.ip, error => error ? reject(error) : resolve()))
     return this.snapshot()
   }
-  closeSockets() { for (const socket of [this.commandSocket, this.stateSocket]) { try { socket?.close() } catch {} } }
-  close() { this.cancel(); this.pending?.reject(new Error('アプリを終了しました。')); clearInterval(this.watchdog); this.closeSockets() }
+  closeSockets() {
+    const sockets = [this.commandSocket, this.stateSocket].filter(Boolean)
+    this.commandSocket = null; this.stateSocket = null
+    const previous = this.closingSockets
+    this.closingSockets = Promise.all([previous, ...sockets.map(socket => new Promise(resolve => {
+      try { socket.close(resolve) } catch { resolve() }
+    }))])
+    return this.closingSockets
+  }
+  close() { this.closed = true; this.cancel(); this.pending?.reject(new Error('アプリを終了しました。')); clearInterval(this.watchdog); return this.closeSockets() }
 }
 module.exports = { Tello, parseAddress }
