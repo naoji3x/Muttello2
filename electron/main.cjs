@@ -67,7 +67,7 @@ app.whenReady().then(async () => {
   tello = new Tello(ip, validateProgram, { log: (kind, value) => {
     try { appendFileSync(path.join(app.getPath('userData'), 'tello.log'), JSON.stringify({ time: new Date().toISOString(), kind, value }) + '\n') } catch (error) { console.error('ログ保存失敗', error.message) }
   } })
-  tello.video = new Video(ip)
+  tello.video = new Video(ip, { log: tello.log })
   tello.onPhoto = photo => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tello:photo', photo) }
   const previewTimer = setInterval(() => {
     if (mainWindow && !mainWindow.isDestroyed() && tello.cameraOn) mainWindow.webContents.send('tello:frame', tello.video.preview())

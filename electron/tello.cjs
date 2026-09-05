@@ -185,7 +185,13 @@ class Tello {
   async startCamera() {
     if (this.cameraOn) return
     await this.video.start()
-    try { await this.command('streamon'); this.cameraOn = true; await this.video.nextFrame(() => this.closed || !this.state.connected || (this.busy && this.cancelled)) }
+    try {
+      await this.command('streamon')
+      this.cameraOn = true
+      // Video packets can precede the command acknowledgement. Startup accepts
+      // that recent frame; capture() still requires a frame after the photo block.
+      await this.video.nextFrame(() => this.closed || !this.state.connected || (this.busy && this.cancelled), { allowRecent: true })
+    }
     catch (error) { await this.stopCamera(); throw error }
   }
   async stopCamera() {

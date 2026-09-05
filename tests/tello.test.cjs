@@ -2,6 +2,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
 const { Tello, parseAddress } = require('../electron/tello.cjs')
+const { Video } = require('../electron/video.cjs')
 const program = { version: 1, steps: [{ type: 'takeoff' }, { type: 'move', direction: 'forward', distance: 50 }, { type: 'land' }] }
 async function fixture(replies = {}) {
   const { validateProgram } = await import('../shared/safety.js')
@@ -215,6 +216,24 @@ function connectionFixture(options = {}) {
   } })
   return { tello, sockets, commands, events, behavior }
 }
+
+test('camera ON succeeds when video arrives before streamon acknowledgement', async () => {
+  const { tello, commands } = await fixture()
+  const video = tello.video = new Video(tello.ip, { timeout: 50 })
+  video.start = async () => { video.socket = { close() {} } }
+  const command = tello.command.bind(tello)
+  tello.command = async value => {
+    if (value === 'streamon') video.decode(Buffer.from([255, 216, 1, 255, 217]))
+    return command(value)
+  }
+  try {
+    assert.equal((await tello.setCamera(true)).cameraOn, true)
+    assert.ok(video.preview())
+    assert.equal(commands.includes('streamoff'), false)
+    await tello.setCamera(false)
+    assert.equal(video.preview(), null)
+  } finally { await tello.close() }
+})
 
 test('failed initial handshake closes both sockets and can reconnect with a fresh SDK handshake', async () => {
   const { tello, sockets, behavior, commands, events } = connectionFixture()

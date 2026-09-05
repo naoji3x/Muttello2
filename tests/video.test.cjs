@@ -9,6 +9,50 @@ const { spawnSync } = require('node:child_process')
 const { Video } = require('../electron/video.cjs')
 const ffmpeg = require('ffmpeg-static')
 
+test('startup accepts a recent pre-acknowledgement frame, but photos wait for a new frame', async () => {
+  const video = new Video('192.168.1.42', { timeout: 50 })
+  video.socket = { close() {} }
+  const jpeg = Buffer.from([255, 216, 1, 255, 217])
+  try {
+    video.decode(jpeg)
+    assert.deepEqual(await video.nextFrame(undefined, { allowRecent: true }), jpeg)
+    await assert.rejects(video.nextFrame(), /受信できません/)
+    video.frameTime = Date.now() - 3000
+    await assert.rejects(video.nextFrame(undefined, { allowRecent: true }), /受信できません/)
+    await assert.rejects(video.nextFrame(() => true, { allowRecent: true }), /中止/)
+  } finally { video.stop() }
+})
+
+test('timeout distinguishes packet reception from decode failure and records decoder diagnostics', async () => {
+  const logs = []
+  const video = new Video('192.168.1.42', { timeout: 25, log: (...args) => logs.push(args) })
+  video.socket = { close() {} }; video.packets = 12; video.sequence = 0; video.stderr = 'invalid H.264'
+  try {
+    await assert.rejects(video.nextFrame(), /映像データは届いています/)
+    assert.deepEqual(logs, [['video-timeout', { packets: 12, frames: 0, stderr: 'invalid H.264' }]])
+  } finally { video.stop() }
+})
+
+test('continuous decoding preserves the initial keyframe and ignores unusual H.264 timing', async () => {
+  const encoded = spawnSync(ffmpeg, ['-f', 'lavfi', '-i', 'testsrc=size=64x48:rate=1000', '-frames:v', '90', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-g', '300', '-pix_fmt', 'yuv420p', '-f', 'h264', 'pipe:1'])
+  assert.equal(encoded.status, 0, encoded.stderr.toString())
+  const socket = new EventEmitter()
+  socket.bind = (_options, callback) => callback()
+  socket.close = () => socket.emit('close')
+  const video = new Video('192.168.1.42', { socketFactory: () => socket })
+  try {
+    await video.start()
+    for (let offset = 0; offset < encoded.stdout.length; offset += 1460) {
+      socket.emit('message', encoded.stdout.subarray(offset, offset + 1460), { address: '192.168.1.42' })
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    const deadline = Date.now() + 2000
+    while (video.sequence < 20 && Date.now() < deadline && !video.error) await new Promise(resolve => setTimeout(resolve, 20))
+    assert.ok(video.sequence >= 20, `Only ${video.sequence} frames decoded: ${video.stderr}`)
+    assert.ok(video.preview())
+  } finally { video.stop() }
+})
+
 test('real H.264 decoder yields a preview frame without recording a video file', async () => {
   const encoded = spawnSync(ffmpeg, ['-f', 'lavfi', '-i', 'testsrc=size=64x48:rate=30', '-t', '3', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-g', '30', '-pix_fmt', 'yuv420p', '-f', 'h264', 'pipe:1'])
   assert.equal(encoded.status, 0, encoded.stderr.toString())
