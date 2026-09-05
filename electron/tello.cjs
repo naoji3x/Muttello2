@@ -130,7 +130,10 @@ class Tello {
         await this.command(command)
         if (this.state.execution === 'uncertain' || this.state.execution === 'emergency-stop') break
         if (step.type === 'takeoff') this.state.flight = 'airborne'
-        if (step.type === 'land') this.state.flight = 'grounded'
+        if (step.type === 'land') {
+          this.state.flight = 'grounded'
+          this.flightCommandsSent = false
+        }
       }
       if (this.state.execution === 'running') this.state.execution = this.cancelled ? 'cancelled' : 'complete'
     } catch (error) {
@@ -150,6 +153,7 @@ class Tello {
       this.state.flight = 'landing'
       await this.command('land')
       this.state.flight = 'grounded'; this.state.execution = 'landed'
+      this.flightCommandsSent = false
     } catch (error) { this.fail(error.message); throw error }
     finally { this.landing = false }
     return this.snapshot()

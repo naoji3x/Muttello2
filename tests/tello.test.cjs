@@ -12,7 +12,7 @@ async function fixture(replies = {}) {
     socket.close = callback => { queueMicrotask(() => { socket.emit('close'); callback?.() }) }
     socket.send = (command, port, ip, callback) => {
       commands.push(command); callback?.()
-      if (command === 'command') queueMicrotask(() => sockets[1].emit('message', Buffer.from('bat:80;h:0;'), { address: ip }))
+      if (command === 'command') queueMicrotask(() => tello.stateSocket?.emit('message', Buffer.from('bat:80;h:0;'), { address: ip }))
       if (replies[command] !== null) setTimeout(() => socket.emit('message', Buffer.from(replies[command] || 'ok'), { address: ip, port }), 2)
     }
     sockets.push(socket); return socket
@@ -106,6 +106,48 @@ test('emergency interrupts a pending command and prevents reconnection', async (
     assert.equal(tello.state.execution, 'emergency-stop')
     await assert.rejects(tello.connect())
   } finally { tello.close() }
+})
+
+test('normal landing permits reconnection after telemetry stops on power off', async () => {
+  for (const manual of [false, true]) {
+    const { tello, commands } = await fixture()
+    try {
+      await tello.run(program)
+      if (manual) await tello.land()
+      tello.state.lastTelemetry = 0
+      // Exercise the real watchdog, rather than calling fail directly.
+      await new Promise(resolve => setTimeout(resolve, 300))
+      assert.equal(tello.state.connected, false)
+      assert.equal(tello.state.execution, 'idle')
+      const result = await tello.connect()
+      assert.equal(result.connected, true)
+      assert.equal(result.flight, 'grounded')
+      assert.equal(commands.at(-1), 'command')
+    } finally { await tello.close() }
+  }
+})
+
+test('failed landing still blocks reconnection', async () => {
+  for (const manual of [false, true]) {
+    const { tello } = await fixture({ land: null })
+    try {
+      await assert.rejects(manual ? tello.land() : tello.run(program))
+      assert.equal(tello.state.execution, 'uncertain')
+      await assert.rejects(tello.connect())
+    } finally { await tello.close() }
+  }
+})
+
+test('a new takeoff after a successful landing restores the reconnection lock', async () => {
+  const replies = {}
+  const { tello } = await fixture(replies)
+  try {
+    await tello.run(program)
+    replies.takeoff = null
+    await assert.rejects(tello.run(program))
+    assert.equal(tello.state.execution, 'uncertain')
+    await assert.rejects(tello.connect())
+  } finally { await tello.close() }
 })
 
 function connectionFixture() {
