@@ -12,6 +12,11 @@ export function validateProgram(program) {
     } else if (step.type === 'land') {
       if (!flying) errors.push('離陸してから着陸してください。')
       flying = false; landed = true; seconds += 10
+    } else if (step.type === 'wait') {
+      if (!Number.isInteger(step.milliseconds) || step.milliseconds < 100 || step.milliseconds > 30000) errors.push('待つ時間は0.1〜30秒にしてください。')
+      else seconds += step.milliseconds / 1000
+    } else if (step.type === 'message') {
+      if (typeof step.text !== 'string' || step.text.length > 200) errors.push('メッセージは200文字以内にしてください。')
     } else {
       if (!flying) errors.push('離陸してから動かしてください。')
       if (step.type === 'move') {

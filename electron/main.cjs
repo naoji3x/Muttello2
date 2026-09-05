@@ -1,5 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('node:path')
+const fs = require('node:fs/promises')
+const { Video } = require('./video.cjs')
 
 const { Tello, parseAddress } = require('./tello.cjs')
 const { readTelloEnv } = require('../shared/env.cjs')
@@ -34,6 +36,7 @@ function createWindow() {
       dialog.showMessageBox(mainWindow, { message: '実行を中止しました。着陸してからアプリを閉じてください。' })
     }
   })
+  mainWindow.on('closed', () => { if (tello) { tello.previewRequested = false; void tello.stopCamera() } })
 
   if (isDevelopment) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
@@ -64,8 +67,25 @@ app.whenReady().then(async () => {
   tello = new Tello(ip, validateProgram, { log: (kind, value) => {
     try { appendFileSync(path.join(app.getPath('userData'), 'tello.log'), JSON.stringify({ time: new Date().toISOString(), kind, value }) + '\n') } catch (error) { console.error('ログ保存失敗', error.message) }
   } })
+  tello.video = new Video(ip)
+  tello.onPhoto = photo => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tello:photo', photo) }
+  const previewTimer = setInterval(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && tello.cameraOn) mainWindow.webContents.send('tello:frame', tello.video.preview())
+  }, 100)
+  previewTimer.unref()
   createWindow()
   const actions = {
+    setCamera: enabled => tello.setCamera(enabled),
+    selectPhotoFolder: async () => {
+      if (tello.busy) throw new Error('実行中は保存先を変更できません。')
+      const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'] })
+      if (!result.canceled && !tello.busy) tello.photoFolder = result.filePaths[0]
+      return tello.snapshot()
+    },
+    exportLogs: async () => {
+      const result = await dialog.showSaveDialog(mainWindow, { defaultPath: 'tello-diagnostics.log' })
+      if (!result.canceled && result.filePath) await fs.copyFile(path.join(app.getPath('userData'), 'tello.log'), result.filePath)
+    },
     getState: () => tello.snapshot(), connect: () => tello.connect(),
     runProgram: program => tello.run(program), cancelProgram: () => tello.cancel(), land: () => tello.land(),
     emergencyStop: async () => {

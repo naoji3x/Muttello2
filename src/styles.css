@@ -92,3 +92,17 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .hardware-status p { margin: 6px 0; }
 .hardware-controls { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; }
 .hardware-controls button { padding: 8px; }
+.camera-panel { padding: 16px; border-bottom: 1px solid #dbe8f1; }
+.camera-panel button, .project-controls button { margin: 4px; padding: 8px 12px; border: 1px solid #b4cbdc; border-radius: 8px; background: #fff; cursor: pointer; }
+.camera-panel p { font-size: 12px; overflow-wrap: anywhere; }
+.camera-preview { width: 100%; border-radius: 8px; margin-top: 8px; }
+.photo-gallery { display: flex; gap: 8px; overflow-x: auto; }
+.photo-gallery figure { margin: 0; min-width: 120px; max-width: 160px; }
+.photo-gallery img { width: 100%; }
+.photo-gallery figcaption { overflow-wrap: anywhere; font-size: 10px; }
+.tutorial { margin-top: 16px; font-size: 13px; line-height: 1.7; }
+.project-controls { display: flex; flex-wrap: wrap; padding: 4px 12px; }
+.editor-workspace { position: relative; flex: 1; min-height: 390px; display: flex; }
+.editor-workspace .blockly-canvas { width: 100%; }
+.editor-lock { position: absolute; inset: 0; z-index: 1000001; background: #ffffff44; display: grid; place-items: center; pointer-events: all; }
+.check-item { display: block; margin: 8px 0; }

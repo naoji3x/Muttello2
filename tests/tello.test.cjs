@@ -54,7 +54,7 @@ test('cancel discards future commands without landing automatically', async () =
     assert.deepEqual(commands, ['command', 'speed 20']); assert.equal(tello.state.execution, 'cancelled')
   } finally { tello.close() }
 })
-test('battery, telemetry and unsupported photos reject before takeoff', async () => {
+test('battery, telemetry and missing photo folder reject before takeoff', async () => {
   const { tello, commands } = await fixture()
   try {
     tello.state.battery = 20; await assert.rejects(tello.run(program))
@@ -106,6 +106,44 @@ test('emergency interrupts a pending command and prevents reconnection', async (
     assert.equal(tello.state.execution, 'emergency-stop')
     await assert.rejects(tello.connect())
   } finally { tello.close() }
+})
+
+test('photo blocks serialize streaming and preserve manually enabled preview', async () => {
+  for (const preview of [false, true]) {
+    const { tello, commands } = await fixture()
+    let captures = 0
+    tello.photoFolder = 'fixture'
+    tello.video = { async start() {}, async nextFrame() {}, async capture() { captures++; return { name: 'photo.jpg' } }, stop() {} }
+    try {
+      if (preview) await tello.setCamera(true)
+      await tello.run({ version: 1, steps: [{ type: 'takeoff' }, { type: 'photo' }, { type: 'land' }] })
+      assert.equal(captures, 1)
+      assert.equal(commands.filter(command => command === 'streamon').length, 1)
+      assert.equal(commands.includes('streamoff'), !preview)
+      assert.equal(tello.state.flight, 'grounded')
+      if (preview) await tello.setCamera(false)
+      assert.equal(commands.at(-1), 'streamoff')
+    } finally { await tello.close() }
+  }
+})
+
+test('failed photo stops unsent moves; wait cancellation sends no wait command', async () => {
+  const { tello, commands } = await fixture()
+  tello.photoFolder = 'fixture'
+  tello.video = { async start() {}, async nextFrame() {}, async capture() { throw new Error('frame timeout') }, stop() {} }
+  try {
+    await assert.rejects(tello.run({ version: 1, steps: [{ type: 'takeoff' }, { type: 'photo' }, { type: 'move', direction: 'forward', distance: 20 }, { type: 'land' }] }), /frame timeout/)
+    assert.equal(commands.includes('forward 20'), false)
+    assert.equal(tello.state.execution, 'uncertain')
+  } finally { await tello.close() }
+  const other = await fixture()
+  try {
+    const run = other.tello.run({ version: 1, steps: [{ type: 'takeoff' }, { type: 'wait', milliseconds: 1000 }, { type: 'land' }] })
+    setTimeout(() => other.tello.cancel(), 20)
+    await run
+    assert.deepEqual(other.commands, ['command', 'speed 20', 'takeoff'])
+    assert.equal(other.tello.state.execution, 'cancelled')
+  } finally { await other.tello.close() }
 })
 
 test('normal landing permits reconnection after telemetry stops on power off', async () => {

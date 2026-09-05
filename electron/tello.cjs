@@ -22,9 +22,11 @@ class Tello {
     }, 250)
     this.watchdog.unref?.()
   }
-  snapshot() { return { ...this.state } }
+  snapshot() { return { ...this.state, cameraOn: !!this.cameraOn, cameraError: this.video?.error?.message || '', photoFolder: this.photoFolder || '' } }
   fresh() { return this.state.lastTelemetry !== null && Date.now() - this.state.lastTelemetry < this.staleMs }
   fail(message) {
+    this.video?.stop()
+    this.cameraOn = false
     if (this.connecting) this.connectionError = new Error(message)
     this.cancelled = true
     this.state.connected = false
@@ -125,17 +127,17 @@ class Tello {
       }, command === 'command' ? this.connectTimeout : this.timeout)
       this.pending = { resolve: () => finish(), reject: finish }
       this.log('command', command)
-      if (command !== 'command') this.flightCommandsSent = true
+      if (/^(takeoff|land|forward|back|left|right|up|down|cw|ccw)( |$)/.test(command)) this.flightCommandsSent = true
       const onError = error => { if (error && !settled) this.fail(error.message) }
       try { this.commandSocket.send(command, 8889, this.ip, onError) } catch (error) { onError(error) }
     })
   }
   async run(program) {
-    if (this.busy || this.landing || !this.state.connected || !this.fresh() || this.state.flight !== 'grounded' || this.state.height > 10) throw new Error('接続と着陸状態を確認してください。')
+    if (this.busy || this.cameraBusy || this.landing || !this.state.connected || !this.fresh() || this.state.flight !== 'grounded' || this.state.height > 10) throw new Error('接続と着陸状態を確認してください。')
     if (this.state.battery < 30) throw new Error('バッテリーを30%以上にしてください。')
     const errors = this.validate(program)
     if (errors.length) throw new Error(errors.join('\n'))
-    if (program.steps.some(step => step.type === 'photo')) throw new Error('実機の写真保存は未対応です。写真ブロックを外してください。')
+    if (program.steps.some(step => step.type === 'photo') && (!this.video || !this.photoFolder)) throw new Error('写真の保存先を選んでください。')
     this.busy = true; this.cancelled = false; this.state.execution = 'running'
     const deadline = setTimeout(() => this.fail('実行が60秒を超えました。機体を確認してください。'), 60000)
     try {
@@ -145,6 +147,18 @@ class Tello {
         if (this.cancelled) break
         if (!this.fresh() || !this.state.connected) throw new Error('接続が失われました。')
         this.state.activeStep = index
+        if (step.type === 'wait') {
+          const until = Date.now() + step.milliseconds
+          while (!this.cancelled && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 20))
+          continue
+        }
+        if (step.type === 'message') { this.state.message = step.text; continue }
+        if (step.type === 'photo') {
+          await this.startCamera()
+          const photo = await this.video.capture(this.photoFolder, () => this.cancelled)
+          this.onPhoto?.(photo)
+          continue
+        }
         const command = step.type === 'move' ? `${step.direction} ${step.distance}` : step.type === 'turn' ? `${step.direction === 'right' ? 'cw' : 'ccw'} ${step.degrees}` : step.type
         if (step.type === 'takeoff') this.state.flight = 'taking-off'
         if (step.type === 'land') this.state.flight = 'landing'
@@ -158,18 +172,45 @@ class Tello {
       }
       if (this.state.execution === 'running') this.state.execution = this.cancelled ? 'cancelled' : 'complete'
     } catch (error) {
-      if (this.state.execution !== 'emergency-stop') this.fail(error.message)
-      throw error
-    } finally { clearTimeout(deadline); this.busy = false }
+      if (this.cancelled && this.state.execution === 'cancelled') this.state.message = 'プログラムを中止しました。着陸は別操作です。'
+      else { if (this.state.execution !== 'emergency-stop') this.fail(error.message); throw error }
+    } finally {
+      clearTimeout(deadline)
+      if (!this.previewRequested) await this.stopCamera()
+      this.busy = false
+    }
     return this.snapshot()
   }
   cancel() { this.cancelled = true; if (this.state.execution === 'running') this.state.execution = 'cancelled'; return this.snapshot() }
+  async startCamera() {
+    if (this.cameraOn) return
+    await this.video.start()
+    try { await this.command('streamon'); this.cameraOn = true; await this.video.nextFrame(() => this.closed || !this.state.connected || (this.busy && this.cancelled)) }
+    catch (error) { await this.stopCamera(); throw error }
+  }
+  async stopCamera() {
+    const active = this.cameraOn
+    this.cameraOn = false
+    this.video?.stop()
+    if (active && this.state.connected && !this.pending) {
+      try { await this.command('streamoff') } catch (error) { this.fail(error.message) }
+    }
+  }
+  async setCamera(enabled) {
+    if (typeof enabled !== 'boolean' || !this.video || !this.state.connected || this.busy || this.landing || this.cameraBusy || this.pending) throw new Error('実行が終わってからカメラを操作してください。')
+    this.cameraBusy = true
+    this.previewRequested = enabled
+    try { if (enabled) await this.startCamera(); else await this.stopCamera() }
+    catch (error) { this.previewRequested = false; throw error }
+    finally { this.cameraBusy = false }
+    return this.snapshot()
+  }
   async land() {
     this.cancel()
     if (!this.state.connected || this.state.execution === 'uncertain' || this.landing) throw new Error('通信状態が不明です。機体を確認してください。')
     this.landing = true
     try {
-      while (this.busy) await new Promise(resolve => setTimeout(resolve, 20))
+      while (this.busy || this.cameraBusy) await new Promise(resolve => setTimeout(resolve, 20))
       if (!this.state.connected) throw new Error('通信状態が不明です。')
       this.state.flight = 'landing'
       await this.command('land')
@@ -180,6 +221,7 @@ class Tello {
     return this.snapshot()
   }
   async emergency() {
+    this.video?.stop(); this.cameraOn = false
     if (!this.commandSocket || !this.ip) throw new Error('通信ソケットがありません。')
     this.cancel()
     this.pending?.reject(new Error('緊急停止しました。'))
@@ -198,6 +240,6 @@ class Tello {
     }))])
     return this.closingSockets
   }
-  close() { this.closed = true; this.cancel(); this.pending?.reject(new Error('アプリを終了しました。')); clearInterval(this.watchdog); return this.closeSockets() }
+  close() { this.video?.stop(); this.closed = true; this.cancel(); this.pending?.reject(new Error('アプリを終了しました。')); clearInterval(this.watchdog); return this.closeSockets() }
 }
 module.exports = { Tello, parseAddress }

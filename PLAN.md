@@ -45,7 +45,7 @@ The app UI and learning content are Japanese-first. The internal code, APIs, and
 
 ### Out of scope for MVP
 
-- Live video preview and video recording
+- Video recording (live preview is now in scope per the requested camera ON/OFF UI)
 - Mission pads
 - `rc` joystick control
 - Multiple-drone control
@@ -115,7 +115,7 @@ npm run start -- --tello-ip 192.168.1.42
 
 - `--tello-ip <IPv4>` is required for real-flight mode and identifies the Tello EDU's client-mode address.
 - The command port is fixed at `8889`; the state listener binds locally to UDP port `8890`.
-- The video listener binds locally to UDP port `11111` only while photo capture is in use.
+- The video listener binds locally to UDP port `11111` while live preview or photo capture is in use.
 - Validate that the argument is a single IPv4 address before opening a UDP socket.
 - Accept command responses, state packets, and video packets only from the configured Tello IP.
 - Simulation does not require `--tello-ip`.
@@ -131,7 +131,7 @@ When the executor reaches the first photo block in a program:
 2. Send `streamon` if the stream is not already active.
 3. Wait for `ok` and the first decodable video frame, with a bounded timeout.
 4. Save that frame as a JPEG in the teacher-selected project photo folder.
-5. Keep the stream active for later photo blocks, then send `streamoff` when the program completes or is cancelled.
+5. Display the saved snapshot in the app. Keep the stream active for later photo blocks, then send `streamoff` when the program completes or is cancelled. If the user explicitly enabled live preview, retain the stream until camera OFF is pressed. No video files are recorded.
 
 `streamon` can be sent after takeoff: the SDK only requires that SDK mode has already been entered. For a program containing takeoff followed by photo, streaming therefore begins immediately before the first photo block. A failed stream start or frame timeout stops the program and shows a Japanese error; it must not be silently skipped.
 
@@ -282,6 +282,15 @@ tests/
 - A complete beginner tutorial takes approximately 15 minutes or less.
 
 ## 10. Immediate next tasks
+
+### Implementation status (2026-09-05)
+
+- M3: UDP execution, telemetry, safety validation, local logs, on-demand H.264 decoding, live camera ON/OFF, JPEG snapshot saving/display implemented. Hardware acceptance remains pending.
+- M4: Three-item preflight checklist, battery/flight indicators, deliberate emergency confirmation, five challenge cards and introductory tutorial implemented. Representative child/adult usability testing remains pending.
+- M5: Pilot/production build paths, required production signing credentials, bundled decoder, explicit log export, and teacher/release checklist implemented. Actual signed artifacts, notarization, physical-drone regression and offline device acceptance remain pending; this is not a validated production release.
+- Earlier milestone gaps filled: versioned project save/load, wait/repeat/message blocks, step execution and simulated photo display. Repeat blocks compile to a bounded flat IR; both execution targets use the same expanded steps and safety checks.
+
+See [teacher guide](docs/teacher-guide.md) for setup and the remaining hardware/release checks.
 
 1. Confirm the exact Tello EDU hardware, firmware, and target operating systems.
 2. Create a small hardware test script that accepts `--tello-ip` for SDK mode, takeoff, landing, state reception, on-demand `streamon`, photo-frame reception, timeout, and connection-loss scenarios.
