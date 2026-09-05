@@ -92,6 +92,7 @@ function App() {
   const [simulationPhotos, setSimulationPhotos] = useState<string[]>([])
   const [checks, setChecks] = useState<boolean[]>([false, false, false])
   const fileRef = useRef<HTMLInputElement>(null)
+  const helpRef = useRef<HTMLDialogElement>(null)
   const isConnected = drone?.connected ?? false
   const [isRunning, setIsRunning] = useState(false)
   const [missionId, setMissionId] = useState<typeof missions[number]['id']>(missions[0].id)
@@ -106,6 +107,8 @@ function App() {
 
     const workspace = Blockly.inject(blocklyRef.current, {
       toolbox,
+      // Use bundled media so icons also work offline and inside Electron's CSP.
+      media: new URL('blockly/media/', document.baseURI).href,
       grid: { spacing: 22, length: 3, colour: '#dbe8f1', snap: true },
       zoom: { controls: true, wheel: true, startScale: 1, maxScale: 1.3, minScale: 0.65 },
       trashcan: true,
@@ -281,7 +284,19 @@ function App() {
           <span className="connection-dot" />
           {isConnected ? 'Tello EDU 接続済み' : 'シミュレーション'}
         </div>
+        <button className="help-button" onClick={() => helpRef.current?.showModal()}>使い方</button>
       </header>
+      <dialog ref={helpRef} className="help-dialog" aria-labelledby="help-title">
+        <h2 id="help-title">はじめての使い方（約15分）</h2>
+        <ol>
+          <li>はじめる・離陸・着陸をつなぐ（3分）</li>
+          <li>前に50cm動くブロックを入れてシミュレーション（3分）</li>
+          <li>右に90度回って進む（3分）</li>
+          <li>待つ・くりかえしを試す（3分）</li>
+          <li>先生と接続し、保存先を選んで写真をとる（3分）</li>
+        </ol>
+        <form method="dialog"><button className="reset-button" autoFocus>閉じる</button></form>
+      </dialog>
 
       <section className="workspace-layout">
         <aside className="mission-panel">
@@ -310,7 +325,6 @@ function App() {
             <span>🛡️</span>
             <p><strong>安全のやくそく</strong><br />先生とドローンに接続してから「飛ばす」を押そう。</p>
           </div>
-          <details className="tutorial"><summary>はじめての使い方（約15分）</summary><ol><li>はじめる・離陸・着陸をつなぐ（3分）</li><li>前に50cm動くブロックを入れてシミュレーション（3分）</li><li>右に90度回って進む（3分）</li><li>待つ・くりかえしを試す（3分）</li><li>先生と接続し、保存先を選んで写真をとる（3分）</li></ol></details>
         </aside>
 
         <section className="editor-panel">
@@ -319,14 +333,21 @@ function App() {
             <span className="block-count">{steps.length} ブロック</span>
           </div>
           <div className="editor-workspace"><div ref={blocklyRef} className="blockly-canvas" aria-label="プログラムを作るブロックエディタ" />{(isRunning || hardwareBusy) && <div className="editor-lock">実行中です</div>}</div>
-          <div className="project-controls"><button onClick={saveProject} disabled={hardwareBusy}>保存する</button><button onClick={() => fileRef.current?.click()} disabled={hardwareBusy || isRunning}>開く</button><input ref={fileRef} type="file" accept=".json" hidden onChange={event => { void loadProject(event.target.files?.[0]); event.target.value = '' }} /><button disabled={isRunning || hardwareBusy || !isSafeProgram || activeStep >= steps.length - 1} onClick={() => { setActiveStep(index => index + 1); setRunState('idle') }}>1ブロック進む</button></div>
-          <button className="palette-clear-button" onClick={clearWorkspace} disabled={isRunning || hardwareBusy}>
-            🗑 すべてのブロックを消す
-          </button>
+          <div className="project-controls">
+            <button className="palette-clear-button" onClick={clearWorkspace} disabled={isRunning || hardwareBusy}>
+              🗑 すべてのブロックを消す
+            </button>
+            <div className="project-file-actions">
+              <button onClick={saveProject} disabled={hardwareBusy}>保存する</button>
+              <button onClick={() => fileRef.current?.click()} disabled={hardwareBusy || isRunning}>開く</button>
+            </div>
+            <input ref={fileRef} type="file" accept=".json" hidden onChange={event => { void loadProject(event.target.files?.[0]); event.target.value = '' }} />
+          </div>
           <div className="execution-bar">
             <div className={`execution-status ${runState}`}><span />{programStatus()}</div>
             <div className="execution-actions">
               <button className="reset-button" onClick={resetRun} disabled={hardwareBusy}>最初に戻す</button>
+              <button className="reset-button" disabled={isRunning || hardwareBusy || !isSafeProgram || activeStep >= steps.length - 1} onClick={() => { setActiveStep(index => index + 1); setRunState('idle') }}>1ブロック進む</button>
               <button className="run-button" onClick={runSimulation} disabled={isRunning || hardwareBusy}>▶ シミュレーション</button>
             </div>
           </div>

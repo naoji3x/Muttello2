@@ -45,17 +45,17 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .panel-heading.compact { min-height: 80px; padding: 17px 18px 13px; }
 .block-count { padding: 7px 10px; border-radius: 20px; background: #eff5f8; color: #5c7485; font-size: 12px; font-weight: 700; }
 .blockly-canvas { flex: 1; min-height: 390px; }
-.palette-clear-button { position: absolute; z-index: 1000000; bottom: 73px; left: 14px; width: 166px; border: 1px solid #c8d8e3; border-radius: 9px; padding: 9px 7px; background: #fff; color: #527083; font-size: 12px; font-weight: 800; box-shadow: 0 2px 5px #23476d18; }
+.palette-clear-button { flex-shrink: 0; border: 1px solid #c8d8e3; border-radius: 9px; padding: 9px 12px; background: #fff; color: #527083; font-size: 12px; font-weight: 800; }
 .palette-clear-button:hover:not(:disabled) { background: #fff4f2; border-color: #e8a398; color: #b95248; }
 .palette-clear-button:disabled { opacity: .5; }
-.execution-bar { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 13px 18px; border-top: 1px solid #e5edf2; }
+.execution-bar { display: flex; flex-wrap: wrap; flex-shrink: 0; justify-content: space-between; align-items: center; gap: 14px; padding: 13px 18px; border-top: 1px solid #e5edf2; }
 .execution-status { display: flex; align-items: center; gap: 8px; color: #527083; font-size: 13px; font-weight: 700; }
 .execution-status span { width: 9px; height: 9px; border-radius: 50%; background: #f3b52e; }
 .execution-status.running span { background: #2787cc; animation: pulse 1.1s infinite; }
 .execution-status.complete span { background: #16b276; }
 .execution-status.warning { color: #c26237; }
 .execution-status.warning span { background: #e87748; }
-.execution-actions { display: flex; gap: 8px; }
+.execution-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .reset-button, .run-button { border: 0; border-radius: 9px; padding: 10px 13px; font-size: 13px; font-weight: 800; }
 .reset-button { background: #edf2f5; color: #506878; }
 .run-button { background: #0c9b76; color: white; box-shadow: 0 3px 0 #08795c; }
@@ -100,9 +100,16 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .photo-gallery figure { margin: 0; min-width: 120px; max-width: 160px; }
 .photo-gallery img { width: 100%; }
 .photo-gallery figcaption { overflow-wrap: anywhere; font-size: 10px; }
-.tutorial { margin-top: 16px; font-size: 13px; line-height: 1.7; }
-.project-controls { display: flex; flex-wrap: wrap; padding: 4px 12px; }
-.editor-workspace { position: relative; flex: 1; min-height: 390px; display: flex; }
+.help-button { flex-shrink: 0; padding: 8px 14px; border: 1px solid #8db2cb; border-radius: 8px; background: transparent; color: white; }
+.help-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; overflow-wrap: anywhere; padding: 24px; border: 1px solid #dce7ef; border-radius: 16px; color: #17344b; }
+.help-dialog::backdrop { background: #09283e88; }
+.help-dialog ol { padding-left: 24px; line-height: 1.8; }
+.help-dialog li { margin-bottom: 12px; }
+.help-dialog form { text-align: right; }
+.project-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-shrink: 0; padding: 8px 12px; border-top: 1px solid #e5edf2; }
+.project-file-actions { display: flex; flex-shrink: 0; margin-left: auto; }
+.editor-workspace { position: relative; flex: 1; min-height: 240px; display: flex; }
+.editor-workspace .blockly-canvas { min-height: 240px; }
 .editor-workspace .blockly-canvas { width: 100%; }
 .editor-lock { position: absolute; inset: 0; z-index: 1000001; background: #ffffff44; display: grid; place-items: center; pointer-events: all; }
 .check-item { display: block; margin: 8px 0; }

@@ -91,7 +91,6 @@ const definitions = [
 export const toolbox: Blockly.utils.toolbox.ToolboxDefinition = {
   kind: 'categoryToolbox',
   contents: [
-    { kind: 'category', name: 'くりかえし・待つ', colour: '#7667c8', contents: [{ kind: 'block', type: 'tello_repeat' }, { kind: 'block', type: 'tello_wait' }, { kind: 'block', type: 'tello_message' }] },
     {
       kind: 'category',
       name: 'はじめる・おわる',
@@ -110,6 +109,12 @@ export const toolbox: Blockly.utils.toolbox.ToolboxDefinition = {
         { kind: 'block', type: 'tello_move' },
         { kind: 'block', type: 'tello_turn' },
       ],
+    },
+    {
+      kind: 'category',
+      name: 'くりかえし・待つ',
+      colour: '#7667c8',
+      contents: [{ kind: 'block', type: 'tello_repeat' }, { kind: 'block', type: 'tello_wait' }, { kind: 'block', type: 'tello_message' }],
     },
     {
       kind: 'category',
