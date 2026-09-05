@@ -150,10 +150,10 @@ test('a new takeoff after a successful landing restores the reconnection lock', 
   } finally { await tello.close() }
 })
 
-function connectionFixture() {
+function connectionFixture(options = {}) {
   const sockets = [], commands = [], events = []
   const behavior = { reply: 'ok', telemetry: true, bindError: false }
-  const tello = new Tello('192.168.1.42', () => [], { timeout: 30, staleMs: 60, socketFactory: () => {
+  const tello = new Tello('192.168.1.42', () => [], { timeout: 30, staleMs: 60, connectTimeout: 30, connectAttempts: 1, retryDelay: 1, ...options, socketFactory: () => {
     const socket = new EventEmitter()
     const index = sockets.length
     socket.bind = options => {
@@ -170,7 +170,8 @@ function connectionFixture() {
       assert.ok(socket.ready && sockets[index + 1].ready, 'both sockets must bind before SDK entry')
       commands.push(command); callback?.()
       if (behavior.telemetry) sockets[index + 1].emit('message', Buffer.from('bat:80;h:0;'), { address })
-      if (behavior.reply) queueMicrotask(() => socket.emit('message', Buffer.from(behavior.reply), { address, port }))
+      const reply = typeof behavior.reply === 'function' ? behavior.reply(commands.length) : behavior.reply
+      if (reply) queueMicrotask(() => socket.emit('message', Buffer.from(reply), { address, port }))
     }
     sockets.push(socket); return socket
   } })
@@ -235,4 +236,51 @@ test('closing during bind cancels connection without sending SDK commands', asyn
   await rejected
   assert.deepEqual(commands, [])
   assert.equal(tello.state.connected, false)
+})
+
+test('one connect call retries a lost SDK response on new sockets', async () => {
+  const { tello, behavior, commands, sockets, events } = connectionFixture({ connectAttempts: 3 })
+  try {
+    behavior.reply = attempt => attempt === 1 ? null : 'ok'
+    assert.equal((await tello.connect()).connected, true)
+    assert.deepEqual(commands, ['command', 'command'])
+    assert.equal(sockets.length, 4)
+    assert.ok(events.indexOf('close:1') < events.indexOf('bind:2'))
+  } finally { await tello.close() }
+})
+
+test('SDK retries stop at the configured limit and expose the final failure', async () => {
+  const { tello, behavior, commands, sockets } = connectionFixture({ connectAttempts: 3 })
+  try {
+    behavior.reply = null
+    await assert.rejects(tello.connect(), /3回接続を試しました/)
+    assert.deepEqual(commands, ['command', 'command', 'command'])
+    assert.ok(sockets.every(socket => socket.closed))
+    assert.equal(tello.connecting, false)
+    assert.equal(tello.state.connected, false)
+    assert.match(tello.state.message, /3回/)
+  } finally { await tello.close() }
+})
+
+test('explicit SDK rejection is not retried', async () => {
+  const { tello, behavior, commands } = connectionFixture({ connectAttempts: 3 })
+  try {
+    behavior.reply = 'error'
+    await assert.rejects(tello.connect(), /機体の応答/)
+    assert.deepEqual(commands, ['command'])
+  } finally { await tello.close() }
+})
+
+test('closing during retry delay prevents another SDK send', async () => {
+  const { tello, behavior, commands } = connectionFixture({ connectAttempts: 3, retryDelay: 100 })
+  behavior.reply = null
+  const rejected = assert.rejects(tello.connect(), /接続を中止/)
+  try {
+    for (let i = 0; i < 100 && !tello.state.message.includes('再試行'); i++) await new Promise(resolve => setTimeout(resolve, 5))
+    assert.match(tello.state.message, /再試行/)
+    await assert.rejects(tello.connect())
+    await tello.close()
+    await rejected
+    assert.deepEqual(commands, ['command'])
+  } finally { await tello.close() }
 })

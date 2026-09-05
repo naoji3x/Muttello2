@@ -14,8 +14,8 @@ function parseAddress(args, env = process.env) {
 }
 
 class Tello {
-  constructor(ip, validate, { socketFactory = () => dgram.createSocket('udp4'), timeout = 15000, staleMs = 3000, log = () => {} } = {}) {
-    Object.assign(this, { ip, validate, socketFactory, timeout, staleMs, log })
+  constructor(ip, validate, { socketFactory = () => dgram.createSocket('udp4'), timeout = 15000, staleMs = 3000, connectTimeout = 5000, connectAttempts = 3, retryDelay = 1000, log = () => {} } = {}) {
+    Object.assign(this, { ip, validate, socketFactory, timeout, staleMs, connectTimeout, connectAttempts, retryDelay, log })
     this.state = { configured: !!ip, connected: false, flight: 'unknown', execution: 'idle', battery: null, height: null, lastTelemetry: null, message: '', activeStep: -1 }
     this.watchdog = setInterval(() => {
       if (this.state.connected && !this.fresh()) this.fail('状態データが途絶えました。機体の状態は不明です。')
@@ -39,6 +39,24 @@ class Tello {
     if (this.closed || ['uncertain', 'emergency-stop'].includes(this.state.execution) || this.state.flight === 'airborne' || this.busy || this.landing || this.connecting) throw new Error('機体を確認し、着陸後にアプリを再起動してください。')
     if (this.state.connected) return this.snapshot()
     this.connecting = true
+    try {
+      for (let attempt = 1; attempt <= this.connectAttempts; attempt++) {
+        if (this.closed || ['uncertain', 'emergency-stop'].includes(this.state.execution)) throw new Error('接続を中止しました。')
+        this.log('connect-attempt', { attempt, max: this.connectAttempts })
+        try { return await this.connectAttempt() }
+        catch (error) {
+          if (error.code !== 'SDK_TIMEOUT' || this.closed || ['uncertain', 'emergency-stop'].includes(this.state.execution)) throw error
+          if (attempt === this.connectAttempts) throw new Error(`SDKの応答がありません。${attempt}回接続を試しました。機体の電源・IP・Wi-Fi接続を確認してください。`)
+          this.state.message = `機体の応答を待っています。接続を再試行します（${attempt + 1}/${this.connectAttempts}）。`
+          await new Promise(resolve => setTimeout(resolve, this.retryDelay))
+        }
+      }
+    } catch (error) {
+      if (this.state.execution !== 'emergency-stop') this.state.message = error.message
+      throw error
+    } finally { this.connecting = false }
+  }
+  async connectAttempt() {
     this.connectionError = null
     try {
       await this.closeSockets()
@@ -84,7 +102,7 @@ class Tello {
       if (this.state.execution !== 'emergency-stop') this.fail(error.message)
       await this.closeSockets()
       throw error
-    } finally { this.connecting = false }
+    }
   }
   bind(socket, port) {
     return new Promise((resolve, reject) => {
@@ -101,7 +119,10 @@ class Tello {
     return new Promise((resolve, reject) => {
       let settled = false
       const finish = error => { if (settled) return; settled = true; clearTimeout(timer); this.pending = null; error ? reject(error) : resolve() }
-      const timer = setTimeout(() => { this.fail('応答がありません。再送せず停止しました。機体を確認してください。') }, this.timeout)
+      const timer = setTimeout(() => {
+        if (command === 'command') finish(Object.assign(new Error('SDKの応答がありません。'), { code: 'SDK_TIMEOUT' }))
+        else this.fail('応答がありません。再送せず停止しました。機体を確認してください。')
+      }, command === 'command' ? this.connectTimeout : this.timeout)
       this.pending = { resolve: () => finish(), reject: finish }
       this.log('command', command)
       if (command !== 'command') this.flightCommandsSent = true
