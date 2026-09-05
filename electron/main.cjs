@@ -1,10 +1,15 @@
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('node:path')
+
+const { Tello, parseAddress } = require('./tello.cjs')
+const { appendFileSync } = require('node:fs')
+let tello
+let mainWindow
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL)
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1100,
@@ -17,6 +22,16 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
     },
+  })
+
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  mainWindow.webContents.on('will-navigate', event => event.preventDefault())
+  mainWindow.on('close', event => {
+    if (tello && (tello.busy || ['airborne', 'taking-off', 'landing'].includes(tello.state.flight))) {
+      event.preventDefault()
+      tello.cancel()
+      dialog.showMessageBox(mainWindow, { message: '実行を中止しました。着陸してからアプリを閉じてください。' })
+    }
   })
 
   if (isDevelopment) {
@@ -38,8 +53,26 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const { validateProgram } = await import('../shared/safety.js')
+  let ip
+  try { ip = parseAddress(process.argv) } catch (error) { dialog.showErrorBox('起動引数エラー', error.message); app.quit(); return }
+  tello = new Tello(ip, validateProgram, { log: (kind, value) => {
+    try { appendFileSync(path.join(app.getPath('userData'), 'tello.log'), JSON.stringify({ time: new Date().toISOString(), kind, value }) + '\n') } catch (error) { console.error('ログ保存失敗', error.message) }
+  } })
   createWindow()
+  const actions = {
+    getState: () => tello.snapshot(), connect: () => tello.connect(),
+    runProgram: program => tello.run(program), cancelProgram: () => tello.cancel(), land: () => tello.land(),
+    emergencyStop: async () => {
+      const result = await dialog.showMessageBox(mainWindow, { type: 'warning', title: '先生用：緊急モーター停止', message: 'モーターを直ちに停止します。飛行中の機体は落下します。', buttons: ['戻る', 'モーターを停止する'], defaultId: 0, cancelId: 0, noLink: true })
+      return result.response === 1 ? tello.emergency() : tello.snapshot()
+    },
+  }
+  for (const [name, action] of Object.entries(actions)) ipcMain.handle(`tello:${name}`, async (event, value) => {
+    if (event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('許可されていない操作です。')
+    return action(value)
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -49,3 +82,6 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+app.on('before-quit', () => tello?.cancel())
+app.on('will-quit', () => tello?.close())

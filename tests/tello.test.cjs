@@ -1,0 +1,109 @@
+const { test } = require('node:test')
+const assert = require('node:assert/strict')
+const { EventEmitter } = require('node:events')
+const { Tello, parseAddress } = require('../electron/tello.cjs')
+const program = { version: 1, steps: [{ type: 'takeoff' }, { type: 'move', direction: 'forward', distance: 50 }, { type: 'land' }] }
+async function fixture(replies = {}) {
+  const { validateProgram } = await import('../shared/safety.js')
+  const commands = [], sockets = []
+  const tello = new Tello('192.168.1.42', validateProgram, { timeout: 30, staleMs: 500, socketFactory: () => {
+    const socket = new EventEmitter()
+    socket.bind = () => queueMicrotask(() => socket.emit('listening'))
+    socket.close = () => {}
+    socket.send = (command, port, ip, callback) => {
+      commands.push(command); callback?.()
+      if (command === 'command') queueMicrotask(() => sockets[1].emit('message', Buffer.from('bat:80;h:0;'), { address: ip }))
+      if (replies[command] !== null) setTimeout(() => socket.emit('message', Buffer.from(replies[command] || 'ok'), { address: ip, port }), 2)
+    }
+    sockets.push(socket); return socket
+  } })
+  await tello.connect()
+  return { tello, commands, sockets }
+}
+test('startup endpoint rejects missing, repeated and non IPv4 values', () => {
+  assert.equal(parseAddress([]), null)
+  assert.equal(parseAddress(['--tello-ip', '192.168.1.42']), '192.168.1.42')
+  for (const args of [['--tello-ip'], ['--tello-ip', 'host'], ['--tello-ip', '1.2.3.4', '--tello-ip', '1.2.3.5']]) assert.throws(() => parseAddress(args))
+})
+test('validated flight commands are serialized', async () => {
+  const { tello, commands } = await fixture()
+  try { await tello.run(program); assert.deepEqual(commands, ['command', 'speed 20', 'takeoff', 'forward 50', 'land']); assert.equal(tello.state.flight, 'grounded') } finally { tello.close() }
+})
+test('timeout is never retried and stops unsent movement', async () => {
+  const { tello, commands } = await fixture({ takeoff: null })
+  try { await assert.rejects(tello.run(program)); assert.equal(tello.state.execution, 'uncertain'); assert.deepEqual(commands, ['command', 'speed 20', 'takeoff']); await assert.rejects(tello.connect()) } finally { tello.close() }
+})
+test('SDK error stops the queue', async () => {
+  const { tello, commands } = await fixture({ takeoff: 'error' })
+  try { await assert.rejects(tello.run(program)); assert.equal(commands.includes('forward 50'), false) } finally { tello.close() }
+})
+test('foreign response and telemetry cannot authorize flight', async () => {
+  const { tello, sockets } = await fixture({ takeoff: null })
+  try {
+    sockets[1].emit('message', Buffer.from('bat:99;h:90;'), { address: '1.2.3.4' })
+    assert.equal(tello.state.height, 0)
+    const run = tello.run(program)
+    setTimeout(() => sockets[0].emit('message', Buffer.from('ok'), { address: '1.2.3.4', port: 8889 }), 10)
+    await assert.rejects(run)
+  } finally { tello.close() }
+})
+test('cancel discards future commands without landing automatically', async () => {
+  const { tello, commands } = await fixture()
+  try {
+    const run = tello.run(program); tello.cancel(); await run
+    assert.deepEqual(commands, ['command', 'speed 20']); assert.equal(tello.state.execution, 'cancelled')
+  } finally { tello.close() }
+})
+test('battery, telemetry and unsupported photos reject before takeoff', async () => {
+  const { tello, commands } = await fixture()
+  try {
+    tello.state.battery = 20; await assert.rejects(tello.run(program))
+    tello.state.battery = 80; tello.state.lastTelemetry = 0; await assert.rejects(tello.run(program))
+    tello.state.lastTelemetry = Date.now()
+    await assert.rejects(tello.run({ version: 1, steps: [{ type: 'takeoff' }, { type: 'photo' }, { type: 'land' }] }))
+    assert.deepEqual(commands, ['command'])
+  } finally { tello.close() }
+})
+test('connection loss rejects in-flight command and clears queue', async () => {
+  const { tello, commands } = await fixture({ takeoff: null })
+  try {
+    const run = tello.run(program)
+    setTimeout(() => tello.fail('接続断'), 10)
+    await assert.rejects(run)
+    assert.equal(commands.includes('forward 50'), false)
+  } finally { tello.close() }
+})
+test('safety rejects malformed, vertical and radial limit violations', async () => {
+  const { validateProgram } = await import('../shared/safety.js')
+  assert.deepEqual(validateProgram(program), [])
+  const invalid = [null, { version: 2, steps: [] }, { version: 1, steps: [{ type: 'land' }] }, ...[
+    [{ type: 'move', direction: 'up', distance: 200 }],
+    [{ type: 'move', direction: 'forward', distance: 400 }, { type: 'move', direction: 'right', distance: 400 }],
+    [{ type: 'move', direction: 'forward;emergency', distance: 50 }],
+    [{ type: 'turn', direction: 'left', degrees: NaN }],
+  ].map(steps => ({ version: 1, steps: [{ type: 'takeoff' }, ...steps, { type: 'land' }] }))]
+  for (const item of invalid) assert.ok(validateProgram(item).length)
+})
+test('landing waits for the current command and cancels remaining steps', async () => {
+  const { tello, commands } = await fixture()
+  try {
+    const run = tello.run(program)
+    const landing = tello.land()
+    await Promise.all([run, landing])
+    assert.deepEqual(commands, ['command', 'speed 20', 'land'])
+    assert.equal(tello.state.execution, 'landed')
+  } finally { tello.close() }
+})
+test('emergency interrupts a pending command and prevents reconnection', async () => {
+  const { tello, commands } = await fixture({ takeoff: null })
+  try {
+    const run = tello.run(program)
+    const rejected = assert.rejects(run)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await tello.emergency(); await rejected
+    assert.equal(commands.at(-1), 'emergency')
+    assert.equal(commands.includes('forward 50'), false)
+    assert.equal(tello.state.execution, 'emergency-stop')
+    await assert.rejects(tello.connect())
+  } finally { tello.close() }
+})

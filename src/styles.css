@@ -87,3 +87,8 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .fly-button { background: #e86457; box-shadow: 0 3px 0 #bf493f; }
 .fly-button:disabled { cursor: not-allowed; background: #cbd7de; box-shadow: none; }
 @keyframes pulse { 50% { transform: scale(1.45); opacity: .55; } }
+
+.hardware-status { padding: 12px; font-size: 12px; background: #eef4f8; border-radius: 10px; }
+.hardware-status p { margin: 6px 0; }
+.hardware-controls { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; }
+.hardware-controls button { padding: 8px; }

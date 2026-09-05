@@ -1,3 +1,5 @@
+import { validateProgram } from '../shared/safety.js'
+import type { TelloState } from './tello'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as Blockly from 'blockly'
 import {
@@ -78,7 +80,11 @@ function App() {
   const [steps, setSteps] = useState<DroneStep[]>([])
   const [runState, setRunState] = useState<RunState>('idle')
   const [activeStep, setActiveStep] = useState(-1)
-  const [isConnected, setIsConnected] = useState(false)
+  const [drone, setDrone] = useState<TelloState | null>(null)
+  const [hardwareBusy, setHardwareBusy] = useState(false)
+  const [hardwareMessage, setHardwareMessage] = useState('')
+  const [preflight, setPreflight] = useState(false)
+  const isConnected = drone?.connected ?? false
   const [isRunning, setIsRunning] = useState(false)
   const [missionId, setMissionId] = useState<typeof missions[number]['id']>(missions[0].id)
   const [completedMissionIds, setCompletedMissionIds] = useState<string[]>([])
@@ -106,11 +112,27 @@ function App() {
 
   useEffect(() => () => window.clearInterval(timerRef.current), [])
 
-  const isSafeProgram = useMemo(() => {
-    const takeoff = steps.findIndex((step) => step.type === 'takeoff')
-    const land = steps.findIndex((step) => step.type === 'land')
-    return takeoff >= 0 && land > takeoff
-  }, [steps])
+  useEffect(() => {
+    if (!window.muttello2) return
+    let alive = true
+    const refresh = () => window.muttello2!.getState().then(state => { if (alive) setDrone(state) }).catch(error => { if (alive) setHardwareMessage(String(error)) })
+    void refresh()
+    const timer = window.setInterval(refresh, 500)
+    return () => { alive = false; window.clearInterval(timer) }
+  }, [])
+
+  async function hardwareAction(action: () => Promise<TelloState>) {
+    try { setHardwareMessage(''); setDrone(await action()) }
+    catch (error) { setHardwareMessage(error instanceof Error ? error.message : String(error)) }
+  }
+  async function fly() {
+    if (!window.muttello2 || hardwareBusy || !preflight) return
+    setHardwareBusy(true)
+    try { await hardwareAction(() => window.muttello2!.runProgram({ version: 1, steps })) }
+    finally { setHardwareBusy(false); setPreflight(false) }
+  }
+  const safetyErrors = useMemo(() => validateProgram({ version: 1, steps }), [steps])
+  const isSafeProgram = safetyErrors.length === 0
   const flightStates = useMemo(() => simulateFlight(steps), [steps])
   const path = useMemo(() => [initialFlightState, ...flightStates], [flightStates])
   const photoCount = steps.filter((step) => step.type === 'photo').length
@@ -173,7 +195,7 @@ function App() {
   }
 
   function programStatus() {
-    if (runState === 'warning') return '離陸と着陸をつなげてください'
+    if (runState === 'warning') return safetyErrors[0] ?? 'プログラムを確認してください'
     if (runState === 'running') return `${activeStep + 1}番目のブロックを実行中`
     if (runState === 'complete') return 'シミュレーションが終わりました！'
     return isSafeProgram ? '飛行前チェック OK' : '飛行前チェックが必要です'
@@ -206,7 +228,7 @@ function App() {
                 key={mission.id}
                 className={`mission-option ${mission.id === missionId ? 'selected' : ''}`}
                 onClick={() => selectMission(mission.id)}
-                disabled={isRunning}
+                disabled={isRunning || hardwareBusy}
               >
                 <span className="mission-number">{completedMissionIds.includes(mission.id) ? '✓' : mission.number}</span>
                 <span>{mission.shortTitle}</span>
@@ -225,14 +247,14 @@ function App() {
             <span className="block-count">{steps.length} ブロック</span>
           </div>
           <div ref={blocklyRef} className="blockly-canvas" aria-label="プログラムを作るブロックエディタ" />
-          <button className="palette-clear-button" onClick={clearWorkspace} disabled={isRunning}>
+          <button className="palette-clear-button" onClick={clearWorkspace} disabled={isRunning || hardwareBusy}>
             🗑 すべてのブロックを消す
           </button>
           <div className="execution-bar">
             <div className={`execution-status ${runState}`}><span />{programStatus()}</div>
             <div className="execution-actions">
-              <button className="reset-button" onClick={resetRun}>最初に戻す</button>
-              <button className="run-button" onClick={runSimulation} disabled={isRunning}>▶ シミュレーション</button>
+              <button className="reset-button" onClick={resetRun} disabled={hardwareBusy}>最初に戻す</button>
+              <button className="run-button" onClick={runSimulation} disabled={isRunning || hardwareBusy}>▶ シミュレーション</button>
             </div>
           </div>
         </section>
@@ -264,11 +286,23 @@ function App() {
               </div>
             ))}
           </div>
+          <section className="hardware-status" aria-live="polite">
+            <strong>実機の状態</strong>
+            <p>{window.muttello2 ? (drone?.configured ? 'Tello EDU' : '起動時に --tello-ip が必要です') : 'Web版はシミュレーション専用です'}</p>
+            <p>電池: {drone?.battery ?? '—'}% ／ 高さ: {drone?.height ?? '—'}cm</p>
+            <p>飛行: {({ grounded: '着陸', airborne: '飛行中', 'taking-off': '離陸中', landing: '着陸中', unknown: '不明' } as Record<string, string>)[drone?.flight ?? 'unknown']}</p>
+            <p>実行: {({ idle: '待機', running: '実行中', complete: '完了', cancelled: '中止（着陸は別操作）', landed: '着陸完了', uncertain: '通信・機体状態が不明', 'emergency-stop': '緊急停止送信済み' } as Record<string, string>)[drone?.execution ?? 'idle']}</p>
+            <p>{hardwareMessage || drone?.message}</p>
+            <label><input type="checkbox" checked={preflight} disabled={hardwareBusy} onChange={event => setPreflight(event.target.checked)} />先生が機種・飛行範囲・周囲の安全を確認しました</label>
+          </section>
           <div className="drone-actions">
-            <button className="connect-button" onClick={() => setIsConnected((connected) => !connected)}>
-              {isConnected ? '接続を切る' : 'ドローンに接続する'}
-            </button>
-            <button className="fly-button" onClick={runSimulation} disabled={!isConnected || !isSafeProgram || isRunning}>飛ばす</button>
+            <button className="connect-button" disabled={!drone?.configured || isConnected || hardwareBusy} onClick={() => void hardwareAction(() => window.muttello2!.connect())}>ドローンに接続する</button>
+            <button className="fly-button" onClick={() => void fly()} disabled={!isConnected || !isSafeProgram || isRunning || hardwareBusy || !preflight}>実機で飛ばす</button>
+          </div>
+          <div className="hardware-controls">
+            <button disabled={!hardwareBusy} onClick={() => void hardwareAction(() => window.muttello2!.cancelProgram())}>プログラム中止</button>
+            <button disabled={!isConnected} onClick={() => void hardwareAction(() => window.muttello2!.land())}>着陸する</button>
+            <button disabled={!drone?.configured} onClick={() => void hardwareAction(() => window.muttello2!.emergencyStop())}>先生用：緊急停止</button>
           </div>
         </aside>
       </section>
