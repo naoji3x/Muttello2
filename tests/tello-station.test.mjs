@@ -13,7 +13,9 @@ function fixture(replies) {
     sent.push(data.toString())
     callback()
     const reply = replies[sent.length - 1]
-    if (reply) queueMicrotask(() => socket.emit('message', Buffer.from(reply), { address, port }))
+    if (reply) queueMicrotask(() => {
+      for (const packet of Array.isArray(reply) ? reply : [reply]) socket.emit('message', Buffer.from(packet), { address, port })
+    })
   }
   return { socket, sent, get closed() { return closed } }
 }
@@ -27,6 +29,15 @@ test('credentials support environment fallback and argument precedence without l
   assert.throws(() => readOptions(['--unknown', 'secret123'], {}), error => !error.message.includes('secret123'))
   assert.throws(() => readOptions(['--tello-ip', 'host'], { TELLO_SSID: 'Dojo', TELLO_PASSWORD: 'secret123' }), /IPv4/)
   assert.deepEqual(readOptions(['--help'], {}), { help: true })
+})
+
+test('station endpoint ignores TELLO_IP and only explicit arguments override the direct-connect default', () => {
+  for (const ip of ['192.168.11.11', '', 'invalid']) {
+    const env = { TELLO_SSID: 'Dojo', TELLO_PASSWORD: 'secret123', TELLO_IP: ip }
+    assert.equal(readOptions([], env).ip, '192.168.10.1')
+    assert.equal(readOptions(['--tello-ip', '192.168.11.10'], env).ip, '192.168.11.10')
+    assert.throws(() => readOptions(['--tello-ip', 'invalid'], env), /IPv4/)
+  }
 })
 
 test('SDK acknowledgement precedes AP settings and socket closes', async () => {
@@ -43,6 +54,31 @@ test('SDK rejection or timeout never sends credentials', async () => {
     assert.deepEqual(f.sent, ['command'])
     assert.equal(f.closed, true)
   }
+})
+
+const binaryReply = Buffer.concat([Buffer.from([0x80, 0x70, 8, 9, 0xff]), Buffer.from('BUILD May  7 2019 12:02:11'), Buffer.alloc(100)])
+
+test('binary packets before textual SDK and AP responses do not stop configuration', async () => {
+  const f = fixture([[binaryReply, 'ok\0'], [binaryReply, 'OK, drone will reboot in 3s\0']])
+  assert.equal(await configureStation(options, { socket: f.socket, timeoutMs: 100 }), 'rebooting')
+  assert.deepEqual(f.sent, ['command', 'ap Dojo secret123'])
+  assert.equal(f.closed, true)
+})
+
+test('binary-only traffic never authorizes AP configuration or extends the deadline', async () => {
+  const f = fixture([binaryReply])
+  const packets = setInterval(() => f.socket.emit('message', binaryReply, { address: options.ip, port: 8889 }), 5)
+  try {
+    await assert.rejects(configureStation(options, { socket: f.socket, timeoutMs: 30 }), /バイナリデータ.*AP設定は送信していません/)
+    assert.deepEqual(f.sent, ['command'])
+    assert.equal(f.closed, true)
+  } finally { clearInterval(packets) }
+})
+
+test('binary AP response remains unconfirmed and embedded ok is not an acknowledgement', async () => {
+  const f = fixture(['ok', Buffer.concat([Buffer.from('ok\0'), binaryReply])])
+  assert.equal(await configureStation(options, { socket: f.socket, timeoutMs: 30 }), 'unconfirmed')
+  assert.equal(f.sent.length, 2)
 })
 
 test('AP reboot acknowledgements accept documented spacing, case and trailing NUL', async () => {
