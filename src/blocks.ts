@@ -5,6 +5,8 @@ export type DroneStep =
   | { type: 'land' }
   | { type: 'move'; direction: string; distance: number }
   | { type: 'turn'; direction: string; degrees: number }
+  | { type: 'flip'; direction: string }
+  | { type: 'speed'; speed: number }
   | { type: 'photo' }
   | { type: 'wait'; milliseconds: number }
   | { type: 'message'; text: string }
@@ -78,6 +80,16 @@ const definitions = [
     colour: '#7667c8',
     tooltip: 'Telloの向きを変えます',
   },
+  { type: 'tello_move_up', message0: '🚁 上に %1 cm 上がる', args0: [{ type: 'field_number', name: 'DISTANCE', value: 50, min: 20, max: 250, precision: 10 }], previousStatement: null, nextStatement: null, colour: '#55b98e' },
+  { type: 'tello_move_down', message0: '🚁 下に %1 cm 下がる', args0: [{ type: 'field_number', name: 'DISTANCE', value: 50, min: 20, max: 250, precision: 10 }], previousStatement: null, nextStatement: null, colour: '#55b98e' },
+  { type: 'tello_move_left', message0: '🚁 左に %1 cm 動く', args0: [{ type: 'field_number', name: 'DISTANCE', value: 50, min: 20, max: 500, precision: 10 }], previousStatement: null, nextStatement: null, colour: '#55b98e' },
+  { type: 'tello_move_right', message0: '🚁 右に %1 cm 動く', args0: [{ type: 'field_number', name: 'DISTANCE', value: 50, min: 20, max: 500, precision: 10 }], previousStatement: null, nextStatement: null, colour: '#55b98e' },
+  { type: 'tello_move_forward', message0: '🚁 前に %1 cm 進む', args0: [{ type: 'field_number', name: 'DISTANCE', value: 50, min: 20, max: 500, precision: 10 }], previousStatement: null, nextStatement: null, colour: '#55b98e' },
+  { type: 'tello_move_back', message0: '🚁 後ろに %1 cm 下がる', args0: [{ type: 'field_number', name: 'DISTANCE', value: 50, min: 20, max: 500, precision: 10 }], previousStatement: null, nextStatement: null, colour: '#55b98e' },
+  { type: 'tello_turn_right', message0: '🚁 %1 度右に回る', args0: [{ type: 'field_number', name: 'DEGREES', value: 90, min: 1, max: 360, precision: 1 }], previousStatement: null, nextStatement: null, colour: '#55b98e' },
+  { type: 'tello_turn_left', message0: '🚁 %1 度左に回る', args0: [{ type: 'field_number', name: 'DEGREES', value: 90, min: 1, max: 360, precision: 1 }], previousStatement: null, nextStatement: null, colour: '#55b98e' },
+  { type: 'tello_flip', message0: '🚁 %1 に宙返りする', args0: [{ type: 'field_dropdown', name: 'DIRECTION', options: [['前', 'forward'], ['後ろ', 'back'], ['左', 'left'], ['右', 'right']] }], previousStatement: null, nextStatement: null, colour: '#55b98e' },
+  { type: 'tello_speed', message0: '🚁 スピードを %1 cm/s にする', args0: [{ type: 'field_number', name: 'SPEED', value: 50, min: 10, max: 100, precision: 10 }], previousStatement: null, nextStatement: null, colour: '#55b98e' },
   {
     type: 'tello_photo',
     message0: '写真をとる 📷',
@@ -104,10 +116,18 @@ export const toolbox: Blockly.utils.toolbox.ToolboxDefinition = {
     {
       kind: 'category',
       name: 'うごき',
-      colour: '#2587c5',
+      colour: '#55b98e',
       contents: [
-        { kind: 'block', type: 'tello_move' },
-        { kind: 'block', type: 'tello_turn' },
+        { kind: 'block', type: 'tello_move_up' },
+        { kind: 'block', type: 'tello_move_down' },
+        { kind: 'block', type: 'tello_move_left' },
+        { kind: 'block', type: 'tello_move_right' },
+        { kind: 'block', type: 'tello_move_forward' },
+        { kind: 'block', type: 'tello_move_back' },
+        { kind: 'block', type: 'tello_turn_right' },
+        { kind: 'block', type: 'tello_turn_left' },
+        { kind: 'block', type: 'tello_flip' },
+        { kind: 'block', type: 'tello_speed' },
       ],
     },
     {
@@ -198,6 +218,12 @@ export function extractSteps(workspace: Blockly.WorkspaceSvg): DroneStep[] {
           distance: Number(block.getFieldValue('DISTANCE')),
         })
         break
+      case 'tello_move_up': steps.push({ type: 'move', direction: 'up', distance: Number(block.getFieldValue('DISTANCE')) }); break
+      case 'tello_move_down': steps.push({ type: 'move', direction: 'down', distance: Number(block.getFieldValue('DISTANCE')) }); break
+      case 'tello_move_left': steps.push({ type: 'move', direction: 'left', distance: Number(block.getFieldValue('DISTANCE')) }); break
+      case 'tello_move_right': steps.push({ type: 'move', direction: 'right', distance: Number(block.getFieldValue('DISTANCE')) }); break
+      case 'tello_move_forward': steps.push({ type: 'move', direction: 'forward', distance: Number(block.getFieldValue('DISTANCE')) }); break
+      case 'tello_move_back': steps.push({ type: 'move', direction: 'back', distance: Number(block.getFieldValue('DISTANCE')) }); break
       case 'tello_turn':
         steps.push({
           type: 'turn',
@@ -205,6 +231,10 @@ export function extractSteps(workspace: Blockly.WorkspaceSvg): DroneStep[] {
           degrees: Number(block.getFieldValue('DEGREES')),
         })
         break
+      case 'tello_turn_right': steps.push({ type: 'turn', direction: 'right', degrees: Number(block.getFieldValue('DEGREES')) }); break
+      case 'tello_turn_left': steps.push({ type: 'turn', direction: 'left', degrees: Number(block.getFieldValue('DEGREES')) }); break
+      case 'tello_flip': steps.push({ type: 'flip', direction: block.getFieldValue('DIRECTION') }); break
+      case 'tello_speed': steps.push({ type: 'speed', speed: Number(block.getFieldValue('SPEED')) }); break
       case 'tello_photo':
         steps.push({ type: 'photo' })
         break
@@ -223,6 +253,8 @@ export function stepLabel(step: DroneStep) {
   if (step.type === 'takeoff') return '離陸する'
   if (step.type === 'land') return '着陸する'
   if (step.type === 'photo') return '写真をとる'
+  if (step.type === 'flip') return `${({ forward: '前', back: '後ろ', left: '左', right: '右' } as Record<string, string>)[step.direction]}に宙返りする`
+  if (step.type === 'speed') return `スピードを ${step.speed}cm/s にする`
   if (step.type === 'move') {
     const labels: Record<string, string> = {
       forward: '前', back: '後ろ', left: '左', right: '右', up: '上', down: '下',

@@ -30,6 +30,11 @@ test('validated flight commands are serialized', async () => {
   const { tello, commands } = await fixture()
   try { await tello.run(program); assert.deepEqual(commands, ['command', 'speed 20', 'takeoff', 'forward 50', 'land']); assert.equal(tello.state.flight, 'grounded') } finally { tello.close() }
 })
+test('speed and flip blocks use their SDK commands in sequence', async () => {
+  const { tello, commands } = await fixture()
+  const advanced = { version: 1, steps: [{ type: 'speed', speed: 50 }, { type: 'takeoff' }, { type: 'move', direction: 'up', distance: 20 }, { type: 'flip', direction: 'forward' }, { type: 'land' }] }
+  try { await tello.run(advanced); assert.deepEqual(commands, ['command', 'speed 20', 'speed 50', 'takeoff', 'up 20', 'flip f', 'land']) } finally { tello.close() }
+})
 test('timeout is never retried and stops unsent movement', async () => {
   const { tello, commands } = await fixture({ takeoff: null })
   try { await assert.rejects(tello.run(program)); assert.equal(tello.state.execution, 'uncertain'); assert.deepEqual(commands, ['command', 'speed 20', 'takeoff']); await assert.rejects(tello.connect()) } finally { tello.close() }
@@ -82,6 +87,8 @@ test('safety rejects malformed, vertical and radial limit violations', async () 
     [{ type: 'move', direction: 'forward', distance: 400 }, { type: 'move', direction: 'right', distance: 400 }],
     [{ type: 'move', direction: 'forward;emergency', distance: 50 }],
     [{ type: 'turn', direction: 'left', degrees: NaN }],
+    [{ type: 'speed', speed: 101 }],
+    [{ type: 'flip', direction: 'forward' }],
   ].map(steps => ({ version: 1, steps: [{ type: 'takeoff' }, ...steps, { type: 'land' }] }))]
   for (const item of invalid) assert.ok(validateProgram(item).length)
 })

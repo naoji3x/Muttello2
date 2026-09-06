@@ -69,6 +69,8 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .flight-path { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; overflow: visible; }
 .flight-path path { fill: none; stroke: #2f8fbd; stroke-width: 1.3; stroke-dasharray: 2 2; }
 .flight-path circle { fill: white; stroke: #2f8fbd; stroke-width: .7; }
+.simulation-photo-effect { position: absolute; z-index: 5; inset: 0; display: grid; place-items: center; background: #ffffffb8; pointer-events: none; animation: simulation-flash .85s ease-out both; }
+.simulation-photo-effect span { padding: 8px 13px; border-radius: 20px; background: #123e5d; color: white; font-size: 14px; font-weight: 800; box-shadow: 0 4px 12px #123e5d44; animation: simulation-photo-label .85s ease-out both; }
 .drone { position: absolute; z-index: 3; display: grid; place-items: center; width: 32px; height: 32px; transform: translate(-50%, -50%); border-radius: 50%; background: #123e5d; color: #ffce4c; box-shadow: 0 4px 9px #123e5d44; transition: left .65s ease, top .65s ease; }
 .drone-direction { display: block; color: #ffce4c; font-size: 19px; line-height: 1; transition: transform .65s ease; }
 .altitude-label { position: absolute; z-index: 4; transform: translate(18px, -25px); padding: 3px 6px; border-radius: 5px; background: #123e5d; color: white; font-size: 10px; font-weight: 800; white-space: nowrap; transition: left .65s ease, top .65s ease; }
@@ -87,6 +89,8 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .fly-button { background: #e86457; box-shadow: 0 3px 0 #bf493f; }
 .fly-button:disabled { cursor: not-allowed; background: #cbd7de; box-shadow: none; }
 @keyframes pulse { 50% { transform: scale(1.45); opacity: .55; } }
+@keyframes simulation-flash { 0% { opacity: 0; } 12% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes simulation-photo-label { 0% { transform: scale(.75); opacity: 0; } 18% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
 
 .hardware-status { padding: 12px; font-size: 12px; background: #eef4f8; border-radius: 10px; }
 .hardware-status p { margin: 6px 0; }

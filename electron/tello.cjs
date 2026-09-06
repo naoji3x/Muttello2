@@ -127,7 +127,7 @@ class Tello {
       }, command === 'command' ? this.connectTimeout : this.timeout)
       this.pending = { resolve: () => finish(), reject: finish }
       this.log('command', command)
-      if (/^(takeoff|land|forward|back|left|right|up|down|cw|ccw)( |$)/.test(command)) this.flightCommandsSent = true
+      if (/^(takeoff|land|forward|back|left|right|up|down|cw|ccw|flip)( |$)/.test(command)) this.flightCommandsSent = true
       const onError = error => { if (error && !settled) this.fail(error.message) }
       try { this.commandSocket.send(command, 8889, this.ip, onError) } catch (error) { onError(error) }
     })
@@ -159,7 +159,10 @@ class Tello {
           this.onPhoto?.(photo)
           continue
         }
-        const command = step.type === 'move' ? `${step.direction} ${step.distance}` : step.type === 'turn' ? `${step.direction === 'right' ? 'cw' : 'ccw'} ${step.degrees}` : step.type
+      const command = step.type === 'move' ? `${step.direction} ${step.distance}`
+        : step.type === 'turn' ? `${step.direction === 'right' ? 'cw' : 'ccw'} ${step.degrees}`
+          : step.type === 'flip' ? `flip ${{ forward: 'f', back: 'b', left: 'l', right: 'r' }[step.direction]}`
+            : step.type === 'speed' ? `speed ${step.speed}` : step.type
         if (step.type === 'takeoff') this.state.flight = 'taking-off'
         if (step.type === 'land') this.state.flight = 'landing'
         await this.command(command)

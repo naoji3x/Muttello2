@@ -2,7 +2,7 @@
 export function validateProgram(program) {
   const errors = []
   if (!program || program.version !== 1 || !Array.isArray(program.steps) || program.steps.length > 100) return ['プログラムの形式が正しくありません。']
-  let flying = false, landed = false, altitude = 0, x = 0, y = 0, heading = 0, seconds = 0
+  let flying = false, landed = false, altitude = 0, x = 0, y = 0, heading = 0, speed = 20, seconds = 0
   for (const step of program.steps) {
     if (!step || typeof step !== 'object') { errors.push('不明なブロックです。'); break }
     if (landed) { errors.push('着陸の後にはブロックを置けません。'); break }
@@ -17,6 +17,10 @@ export function validateProgram(program) {
       else seconds += step.milliseconds / 1000
     } else if (step.type === 'message') {
       if (typeof step.text !== 'string' || step.text.length > 200) errors.push('メッセージは200文字以内にしてください。')
+    } else if (step.type === 'speed') {
+      if (!Number.isInteger(step.speed) || step.speed < 10 || step.speed > 100) errors.push('スピードは10〜100cm/sにしてください。')
+      else speed = step.speed
+      seconds += 2
     } else {
       if (!flying) errors.push('離陸してから動かしてください。')
       if (step.type === 'move') {
@@ -29,10 +33,13 @@ export function validateProgram(program) {
         }
         if (altitude <= 0 || altitude > 250) errors.push('高さは地面より上、250cm以下にしてください。')
         if (Math.hypot(x, y) > 500.001) errors.push('出発点から500cm以内にしてください。')
-        seconds += step.distance / 20 + 2
+        seconds += step.distance / speed + 2
       } else if (step.type === 'turn') {
         if (!['left', 'right'].includes(step.direction) || !Number.isInteger(step.degrees) || step.degrees < 1 || step.degrees > 360) errors.push('回転は1〜360度にしてください。')
         else heading += step.degrees * (step.direction === 'right' ? 1 : -1)
+        seconds += 5
+      } else if (step.type === 'flip') {
+        if (!['forward', 'back', 'left', 'right'].includes(step.direction) || altitude < 100) errors.push('宙返りは高さ100cm以上で、方向を確認してください。')
         seconds += 5
       } else if (step.type === 'photo') seconds += 10
       else errors.push('対応していないブロックです。')

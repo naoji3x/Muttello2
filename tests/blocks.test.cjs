@@ -38,3 +38,16 @@ test('wait and message validation cannot inject SDK commands or bypass duration 
     assert.ok(validateProgram({ version: 1, steps: [{ type: 'takeoff' }, ...middle, { type: 'land' }] }).length)
   }
 })
+
+test('fixed movement blocks compile to safe speed and flight commands', async () => {
+  const { validateProgram } = await import('../shared/safety.js')
+  const workspace = new Blockly.Workspace()
+  try {
+    const start = workspace.newBlock('tello_start'), speed = workspace.newBlock('tello_speed'), takeoff = workspace.newBlock('tello_takeoff'), up = workspace.newBlock('tello_move_up'), flip = workspace.newBlock('tello_flip'), land = workspace.newBlock('tello_land')
+    speed.setFieldValue(50, 'SPEED'); up.setFieldValue(20, 'DISTANCE')
+    start.nextConnection.connect(speed.previousConnection); speed.nextConnection.connect(takeoff.previousConnection); takeoff.nextConnection.connect(up.previousConnection); up.nextConnection.connect(flip.previousConnection); flip.nextConnection.connect(land.previousConnection)
+    const steps = exportsObject.extractSteps(workspace)
+    assert.equal(JSON.stringify(steps), JSON.stringify([{ type: 'speed', speed: 50 }, { type: 'takeoff' }, { type: 'move', direction: 'up', distance: 20 }, { type: 'flip', direction: 'forward' }, { type: 'land' }]))
+    assert.deepEqual(validateProgram({ version: 1, steps }), [])
+  } finally { workspace.dispose() }
+})

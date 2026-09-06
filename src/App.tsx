@@ -188,6 +188,7 @@ function App() {
   const displayState = activeStep >= 0
     ? flightStates[Math.min(activeStep, flightStates.length - 1)] ?? initialFlightState
     : initialFlightState
+  const isTakingSimulationPhoto = isRunning && steps[activeStep]?.type === 'photo'
 
   useEffect(() => {
     const step = steps[activeStep]
@@ -246,6 +247,12 @@ function App() {
     setIsRunning(true)
     setActiveStep(0)
     let current = 0
+    let simulationSpeed = 20
+    const stepDuration = (step?: DroneStep) => {
+      if (step?.type === 'speed') { simulationSpeed = step.speed; return 500 }
+      if (step?.type === 'move') return Math.max(200, Math.min(2000, 850 * 20 / simulationSpeed))
+      return step?.type === 'wait' ? step.milliseconds : 850
+    }
     const advance = () => {
       current += 1
       if (current >= steps.length) {
@@ -262,10 +269,9 @@ function App() {
         return
       }
       setActiveStep(current)
-      const nextStep = steps[current]
-      timerRef.current = window.setTimeout(advance, nextStep?.type === 'wait' ? nextStep.milliseconds : 850)
+      timerRef.current = window.setTimeout(advance, stepDuration(steps[current]))
     }
-    timerRef.current = window.setTimeout(advance, steps[0]?.type === 'wait' ? steps[0].milliseconds : 850)
+    timerRef.current = window.setTimeout(advance, stepDuration(steps[0]))
   }
 
   function programStatus() {
@@ -370,6 +376,7 @@ function App() {
               <path d={pathToSvg(path)} />
               {path.map((point, index) => <circle key={`${point.x}-${point.y}-${index}`} cx={point.x} cy={point.y} r="1.2" />)}
             </svg>
+            {isTakingSimulationPhoto && <div className="simulation-photo-effect" aria-hidden="true"><span>📸 パシャッ！</span></div>}
             <div className="drone" style={{ left: `${displayState.x}%`, top: `${displayState.y}%` }}>
               <span className="drone-direction" style={{ transform: `rotate(${displayState.heading}deg)` }}>▲</span>
             </div>
