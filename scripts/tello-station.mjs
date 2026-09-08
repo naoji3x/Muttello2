@@ -6,8 +6,9 @@ import envConfig from '../shared/env.cjs'
 
 const help = `Tello EDUを地面に置き、PCを機体のWi-Fiに接続して実行してください。
 npm run tello:station -- --ssid <SSID> --password <PASSWORD>
-カレントフォルダの.envと環境変数 TELLO_IP / TELLO_SSID / TELLO_PASSWORD に対応。
-優先順位: 引数 > 環境変数 > .env。
+カレントフォルダの.envと環境変数 TELLO_SSID / TELLO_PASSWORD に対応。
+SSID・パスワードの優先順位: 引数 > 環境変数 > .env。
+送信先は192.168.10.1です。TELLO_IPは使用しません。
 --tello-ip <IPv4>  設定前の機体IP（既定: 192.168.10.1）
 --help             この説明を表示`
 
@@ -32,8 +33,8 @@ export function readOptions(args, env = process.env) {
     }
   }
   if (Buffer.byteLength(ssid, 'utf8') > 32) throw new Error('SSIDはUTF-8で32バイト以内にしてください。')
-  const ip = values['tello-ip'] ?? env.TELLO_IP ?? '192.168.10.1'
-  if (!isIPv4(ip)) throw new Error('--tello-ip または TELLO_IP にはIPv4を指定してください。')
+  const ip = values['tello-ip'] ?? '192.168.10.1'
+  if (!isIPv4(ip)) throw new Error('--tello-ip にはIPv4を指定してください。')
   return { ssid, password, ip }
 }
 
@@ -45,6 +46,7 @@ export async function configureStation({ ssid, password, ip }, {
   socket.on('error', onError)
   function send(command, stage) {
     return new Promise((resolve, reject) => {
+      let binaryPackets = 0
       const finish = (error, result) => {
         clearTimeout(timer)
         socket.off('message', onMessage)
@@ -54,6 +56,13 @@ export async function configureStation({ ssid, password, ip }, {
       }
       const onMessage = (message, remote) => {
         if (remote.address !== ip || remote.port !== port) return
+        // SDK replies are text. Do not interpret unrelated binary datagrams as
+        // acknowledgements, or restart the deadline when they arrive.
+        const textBytes = message.toString('latin1').replace(/[\0\s]+$/u, '').trim()
+        if (!textBytes || /[^\x20-\x7e\t\r\n]/.test(textBytes)) {
+          binaryPackets++
+          return
+        }
         const raw = message.toString('utf8')
         const response = raw.replace(/[\0\s]+$/u, '').trim().toLowerCase()
         // SDK 3.0 documents this longer acknowledgement for ap; some firmware
@@ -71,6 +80,7 @@ export async function configureStation({ ssid, password, ip }, {
       }
       const timer = setTimeout(() => {
         if (stage === 'AP設定') finish(null, 'unconfirmed')
+        else if (binaryPackets) finish(new Error(`機体からバイナリデータを${binaryPackets}件受信しましたが、SDKのok応答がありません。AP設定は送信していません。他のTelloアプリを終了し、機体を再起動して再確認してください。`))
         else finish(new Error('SDKモードの応答がありません。PCをTelloのWi-Fiに接続してください。'))
       }, timeoutMs)
       pending = finish
@@ -93,7 +103,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const options = readOptions(process.argv.slice(2), envConfig.readTelloEnv())
     if (options.help) console.log(help)
     else {
-      console.log('Tello EDUへステーションモード設定を送信します。')
+      console.log(`Tello EDU (${options.ip}:8889) へステーションモード設定を送信します。`)
       const result = await configureStation(options)
       if (result === 'unconfirmed') {
         console.error('AP設定を送信しましたが応答は未確認です。Wi-Fi切り替えの可能性があります。自動再送はしません。')

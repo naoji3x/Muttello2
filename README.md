@@ -66,15 +66,15 @@ TELLO_PASSWORD="YourWifiPassword"
 
 `TELLO_IP` は機体のIP、`TELLO_SSID` と `TELLO_PASSWORD` は接続先ルーターのWi-Fi情報です。パスワードに `#` が含まれる場合も値全体を引用符で囲んでください。SSID・パスワードの空白など、ヘルパーの入力制限は引き続き適用されます。
 
-設定後は `npm run start` または `npm run dev:app` で、IPの引数を省略して起動できます。設定ヘルパーも `npm run tello:station` で3項目を読み込みます。優先順位は **コマンドライン引数 > 既存の環境変数 > .env** です。アプリをシミュレーション専用にする場合は `TELLO_IP` を空欄にし、同名の環境変数や起動引数も外してください。
+設定後は `npm run start` または `npm run dev:app` で、IPの引数を省略して起動できます。設定ヘルパー `npm run tello:station` はSSIDとパスワードだけを読み込み、`TELLO_IP` は使用しません。読み込む設定の優先順位は **コマンドライン引数 > 既存の環境変数 > .env** です。アプリをシミュレーション専用にする場合は `TELLO_IP` を空欄にし、同名の環境変数や起動引数も外してください。
 
-**初回のAP設定では、ルーターから割り当てられるIPと直接接続時のIPが異なります。** PCを `TELLO-xxxxxx` に接続した状態では、SSID・パスワードだけを `.env` から読み、送信先を次のように上書きしてください。
+**初回のAP設定では、ルーターから割り当てられるIPと直接接続時のIPが異なります。** PCを `TELLO-xxxxxx` に接続して次を実行します。SSID・パスワードを `.env` から読み、送信先は直接接続用の `192.168.10.1` を使います。
 
 ```bash
-npm run tello:station -- --tello-ip 192.168.10.1
+npm run tello:station
 ```
 
-IP設定がない場合、ヘルパーの送信先は `192.168.10.1` です。ヘルパーで `TELLO_IP` を空欄にした場合は、上記の引数を指定してください。
+`.env` や環境変数の `TELLO_IP` の値にかかわらず、ヘルパーの既定の送信先は `192.168.10.1` です。設定済み機体への再設定時だけ `--tello-ip <現在のIP>` で上書きできます。`TELLO_IP` はアプリの接続先であり、機体に固定IPを設定する項目ではありません。
 
 開発時とヘルパーは実行時のカレントフォルダの `.env`、配布アプリは実行ファイルと同じフォルダの `.env` を読みます（macOSの `.app` では `Contents/MacOS/`）。変更は次回起動時に反映されます。`.env` がなくても起動できます。
 
@@ -119,6 +119,8 @@ SDKの空白区切りコマンドを使用するため、このヘルパーで�
 コマンドとリセット操作は[公式Tello SDK 2.0ガイド](https://dl-cdn.ryzerobotics.com/downloads/Tello/Tello%20SDK%202.0%20User%20Guide.pdf)の「Architecture」「Set Commands」「Reset Tello Wi-Fi」を参照しています。このヘルパーの実機検証は未実施です。
 
 #### AP設定の応答とトラブルシューティング
+
+機体から文字列ではないバイナリデータが届いた場合は、SDK応答として扱わず、当初の15秒の期限内で文字列応答を待ちます。バイナリだけの場合は受信件数を表示して停止し、AP設定は送信しません。データ中の `BUILD` 日付だけではファームウェアのバージョンやSDK対応状況は判断できません。他のTelloアプリを終了し、機体を再起動して確認してください。
 
 ヘルパーは `ok` に加え、`OK, drone will reboot in 3s`（カンマ後の空白なし・末尾NUL文字付きも含む）をAP設定の成功応答として扱います。再起動通知は[公式SDK 3.0ガイドのSetting Commands](https://dl.djicdn.com/downloads/RoboMaster%20TT/Tello_SDK_3.0_User_Guide_en.pdf)に記載されています。受理後は機体の再起動を待ち、ルーターのDHCP一覧で接続を確認してください。
 

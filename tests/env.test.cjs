@@ -18,7 +18,7 @@ test('.env is optional and environment overrides file without mutating process.e
     assert.equal(parseAddress([], settings), '192.168.1.42')
     assert.equal(parseAddress(['--tello-ip', '192.168.10.1'], settings), '192.168.10.1')
     const { readOptions } = await import('../scripts/tello-station.mjs')
-    assert.deepEqual(readOptions([], settings), { ip: '192.168.1.42', ssid: 'Override', password: 'secret#123' })
+    assert.deepEqual(readOptions([], settings), { ip: '192.168.10.1', ssid: 'Override', password: 'secret#123' })
     assert.equal(readOptions(['--tello-ip', '192.168.10.1', '--password', 'other123'], settings).ip, '192.168.10.1')
     assert.equal(readOptions(['--password', 'other123'], settings).password, 'other123')
     assert.equal(readTelloEnv(directory, { TELLO_IP: '' }).TELLO_IP, '')
