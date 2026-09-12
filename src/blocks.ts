@@ -146,35 +146,60 @@ export const toolbox: Blockly.utils.toolbox.ToolboxDefinition = {
 }
 
 export const missions = [
-  { id: 'first', number: 1, title: 'はじめての離陸と着陸', shortTitle: '離陸と着陸', description: 'はじめる・離陸・着陸の3つをつなぎ、シミュレーションしよう。', goal: '安全に離陸して着陸する', icon: '↑' },
   {
-    id: 'photo',
+    id: 'goal',
+    number: 1,
+    title: 'ゴールまで飛ばす',
+    shortTitle: 'ゴールまで飛ばす',
+    description: 'スタートからまっすぐ進んで、ゴール地点まで飛んで着陸しよう。',
+    goal: 'ゴール地点まで進んで着陸する',
+    icon: '🎯',
+  },
+  {
+    id: 'over-mountain',
     number: 2,
-    title: '写真をとって帰ろう',
-    shortTitle: 'まっすぐ飛ぼう',
-    description: '離陸して前に進み、写真をとってから安全に着陸しよう。',
-    goal: '写真を1まい保存する',
-    icon: '📷',
+    title: '山を越える',
+    shortTitle: '山を越える',
+    description: '真ん中にある山よりも高く上がって、山を飛び越えてゴールに着陸しよう。',
+    goal: '高さを上げて山を越えて着陸する',
+    icon: '⛰️',
   },
   {
-    id: 'turn',
+    id: 'around-mountain',
     number: 3,
-    title: '曲がってゴールへ行こう',
-    shortTitle: '右に曲がろう',
-    description: '前へ進んで右に90度回り、ゴールへ向かおう。',
-    goal: '曲がり角を通って着陸する',
-    icon: '↱',
+    title: '山を一周する',
+    shortTitle: '山を一周する',
+    description: '山のまわりを回って一周し、スタート地点に戻って着陸しよう。',
+    goal: '山のまわりを回って一周する',
+    icon: '🔄',
   },
   {
-    id: 'high-photo',
+    id: 'around-mountain-left',
     number: 4,
-    title: '高いところで写真をとろう',
-    shortTitle: '上へ飛ぼう',
-    description: '高く上がって写真をとり、元の高さまで戻って着陸しよう。',
-    goal: '高さ180cmで写真をとる',
-    icon: '☁️',
+    title: '山を「左に回る」で一周する',
+    shortTitle: '左回りで一周',
+    description: '「左に回る」ブロックを使って、山のまわりを反時計回りに一周しよう。',
+    goal: '「左に回る」を使って山を一周する',
+    icon: '↺',
   },
-  { id: 'repeat', number: 5, title: 'くりかえしを使おう', shortTitle: 'くりかえそう', description: '離陸したら「前に20cm・1秒待つ」を2回くりかえして着陸しよう。', goal: 'くりかえしと待つを使う', icon: '↻' },
+  {
+    id: 'around-mountain-twice',
+    number: 5,
+    title: '山を二周する',
+    shortTitle: '山を二周する',
+    description: '「くりかえし」ブロックなどを上手に使って、山のまわりを二周しよう。',
+    goal: '山のまわりを二周して着陸する',
+    icon: '🔁',
+  },
+  {
+    id: 'time-attack',
+    number: 6,
+    title: 'タイムアタック',
+    shortTitle: 'タイムアタック',
+    description: 'スピードブロックを使って速度を上げ、すばやくゴールまで飛ばそう！',
+    goal: 'スピードを上げてゴールまで飛ばす',
+    icon: '⚡',
+  },
 ] as const
 
 let isDefined = false
@@ -192,7 +217,7 @@ export function extractSteps(workspace: Blockly.WorkspaceSvg): DroneStep[] {
   const start = roots.find((block) => block.type === 'tello_start')
   const steps: DroneStep[] = []
   function visit(first: Blockly.Block | null, depth = 0) {
-  if (depth > 10) throw new Error('くりかえしの入れ子が多すぎます。')
+  if (depth > 10) throw new Error('くりかえしの入れ子がおおすぎます。')
   let block = first
   while (block) {
     if (steps.length >= 100) throw new Error('プログラムは展開後100ブロック以内にしてください。')

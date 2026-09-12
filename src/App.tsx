@@ -260,11 +260,20 @@ function App() {
         setActiveStep(steps.length - 1)
         setIsRunning(false)
         setRunState('complete')
-        const achieved = missionId === 'first'
-          || missionId === 'photo' && steps.some(step => step.type === 'photo')
-          || missionId === 'turn' && steps.some((step, index) => step.type === 'turn' && step.direction === 'right' && step.degrees === 90 && steps.slice(index + 1).some(next => next.type === 'move' && next.direction === 'forward'))
-          || missionId === 'high-photo' && steps.some((step, index) => step.type === 'photo' && flightStates[index].altitude === 180)
-          || missionId === 'repeat' && !!workspaceRef.current?.getAllBlocks(false).some(block => block.type === 'tello_repeat') && steps.filter(step => step.type === 'wait').length >= 2
+
+        const totalTurn = steps.reduce((sum, step) => step.type === 'turn' ? sum + step.degrees : sum, 0)
+        const leftTurn = steps.reduce((sum, step) => step.type === 'turn' && step.direction === 'left' ? sum + step.degrees : sum, 0)
+        const hasMove = steps.some(step => step.type === 'move')
+        const reachedGoal = flightStates.some(state => state.y <= 45)
+        const passedOverMountain = flightStates.some(state => state.altitude >= 120 && state.y <= 55)
+
+        const achieved = (missionId === 'goal' && reachedGoal)
+          || (missionId === 'over-mountain' && passedOverMountain && reachedGoal)
+          || (missionId === 'around-mountain' && totalTurn >= 360 && hasMove)
+          || (missionId === 'around-mountain-left' && leftTurn >= 360 && hasMove)
+          || (missionId === 'around-mountain-twice' && totalTurn >= 720 && hasMove)
+          || (missionId === 'time-attack' && steps.some(step => step.type === 'speed') && reachedGoal)
+
         if (achieved) setCompletedMissionIds((ids) => ids.includes(missionId) ? ids : [...ids, missionId])
         return
       }
@@ -285,7 +294,7 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand"><span className="brand-mark">M</span><span>Muttello2</span></div>
-        <div className="lesson-title"><span>ミッション {selectedMission.number}</span> 体育館を{selectedMission.shortTitle}</div>
+        <div className="lesson-title"><span>ミッション {selectedMission.number}</span> {selectedMission.title}</div>
         <div className={`connection ${isConnected ? 'connected' : ''}`}>
           <span className="connection-dot" />
           {isConnected ? 'Tello EDU 接続済み' : 'シミュレーション'}
@@ -315,8 +324,7 @@ function App() {
           </div>
           <div className="mission-picker">
             <div className="mission-picker-title">ミッションをえらぶ</div>
-            {missions.map((mission) => (
-              <button
+            {missions.map((mission) => (\n              <button
                 key={mission.id}
                 className={`mission-option ${mission.id === missionId ? 'selected' : ''}`}
                 onClick={() => selectMission(mission.id)}
@@ -370,8 +378,9 @@ function App() {
           </section>
           <div className="panel-heading compact"><div><span className="section-kicker">飛行のようす</span><h2>体育館シミュレーター</h2></div></div>
           <div className="gym-map">
-            <div className="map-label top">ステージ</div>
-            <div className="map-label bottom">スタート地点</div>
+            <div className="map-goal">🎯 ゴール</div>
+            <div className="map-mountain">⛰️ 山</div>
+            <div className="map-start">🚩 スタート</div>
             <svg className="flight-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
               <path d={pathToSvg(path)} />
               {path.map((point, index) => <circle key={`${point.x}-${point.y}-${index}`} cx={point.x} cy={point.y} r="1.2" />)}

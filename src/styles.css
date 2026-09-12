@@ -65,7 +65,11 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .gym-map { position: relative; height: 267px; margin: 0 18px; overflow: hidden; border: 2px solid #d4e1e9; border-radius: 12px; background-color: #f4fbf2; background-image: linear-gradient(#d8ead844 1px, transparent 1px), linear-gradient(90deg, #d8ead844 1px, transparent 1px); background-size: 28px 28px; }
 .gym-map::before { content: ''; position: absolute; inset: 17px; border: 2px dashed #b8d6be; border-radius: 6px; }
 .map-label { position: absolute; z-index: 2; left: 50%; transform: translateX(-50%); color: #76947e; font-size: 10px; font-weight: 800; letter-spacing: .08em; }
-.map-label.top { top: 5px; }.map-label.bottom { bottom: 5px; }
+.map-label.top { top: 5px; }
+.map-label.bottom { bottom: 5px; }
+.map-goal { position: absolute; top: 18%; left: 50%; transform: translate(-50%, -50%); padding: 3px 8px; border-radius: 6px; background: #ffe9e6; border: 1px dashed #f1998f; color: #c0392b; font-size: 10px; font-weight: 800; z-index: 2; pointer-events: none; }
+.map-mountain { position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; width: 68px; height: 44px; border-radius: 50%; background: #e3eed8; border: 2px dashed #82ab73; color: #2e6221; font-size: 11px; font-weight: 800; z-index: 2; pointer-events: none; box-shadow: inset 0 0 6px rgba(100, 160, 80, 0.15); }
+.map-start { position: absolute; top: 82%; left: 50%; transform: translate(-50%, -50%); color: #63826b; font-size: 10px; font-weight: 800; z-index: 2; pointer-events: none; }
 .flight-path { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; overflow: visible; }
 .flight-path path { fill: none; stroke: #2f8fbd; stroke-width: 1.3; stroke-dasharray: 2 2; }
 .flight-path circle { fill: white; stroke: #2f8fbd; stroke-width: .7; }
@@ -76,12 +80,15 @@ h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.03em; }
 .altitude-label { position: absolute; z-index: 4; transform: translate(18px, -25px); padding: 3px 6px; border-radius: 5px; background: #123e5d; color: white; font-size: 10px; font-weight: 800; white-space: nowrap; transition: left .65s ease, top .65s ease; }
 .telemetry { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; padding: 14px 18px; }
 .telemetry div { padding: 9px 7px; border-radius: 8px; background: #f2f6f8; text-align: center; }
-.telemetry span, .telemetry strong { display: block; }.telemetry span { color: #738a99; font-size: 10px; }.telemetry strong { margin-top: 4px; color: #24475f; font-size: 12px; }
+.telemetry span, .telemetry strong { display: block; }
+.telemetry span { color: #738a99; font-size: 10px; }
+.telemetry strong { margin-top: 4px; color: #24475f; font-size: 12px; }
 .step-list { margin: 0 18px; border-top: 1px solid #e8eff3; padding-top: 13px; }
 .step-list-title { margin-bottom: 7px; color: #5b7485; font-size: 12px; font-weight: 800; }
 .step-row { display: flex; align-items: center; gap: 8px; padding: 7px 4px; border-radius: 6px; color: #587080; font-size: 12px; }
 .step-row span { display: grid; place-items: center; flex: 0 0 auto; width: 19px; height: 19px; border-radius: 50%; background: #e8eff3; color: #547083; font-size: 10px; font-weight: 800; }
-.step-row.active { background: #e6f6f1; color: #087b61; font-weight: 800; }.step-row.active span { background: #0c9b76; color: white; }
+.step-row.active { background: #e6f6f1; color: #087b61; font-weight: 800; }
+.step-row.active span { background: #0c9b76; color: white; }
 .empty-steps { color: #90a0aa; font-size: 12px; }
 .drone-actions { display: grid; grid-template-columns: 1.35fr .65fr; gap: 8px; margin: 17px 18px; }
 .connect-button, .fly-button { padding: 11px 8px; border: 0; border-radius: 9px; color: white; font-size: 12px; font-weight: 800; }
