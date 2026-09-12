@@ -31,7 +31,9 @@ jobs:
         run: npm ci
 
       - name: Build frontend
-        run: npx vite build --debug
+        shell: bash
+        run: |
+          npm run build > build.log 2>&1 || (cat build.log && echo "### Build Error" >> "$GITHUB_STEP_SUMMARY" && echo '```' >> "$GITHUB_STEP_SUMMARY" && cat build.log >> "$GITHUB_STEP_SUMMARY" && echo '```' >> "$GITHUB_STEP_SUMMARY" && exit 1)
 
       - name: Build package for Windows
         if: matrix.os == 'windows-latest'
