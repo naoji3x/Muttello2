@@ -13,10 +13,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac dmg zip -c.mac.identity=null -c.publish=never",
+    "dist:mac": "npm run build && electron-builder --mac dmg zip --publish never",
     "start": "npm run build && electron .",
     "test": "node --test",
-    "dist:win": "npm run build && electron-builder --win --x64 -c.publish=never"
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never"
   },
   "dependencies": {
     "blockly": "latest",
