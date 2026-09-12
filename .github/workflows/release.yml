@@ -33,7 +33,18 @@ jobs:
       - name: Build frontend
         shell: bash
         run: |
-          npm run build > build.log 2>&1 || (cat build.log && echo "### Build Error" >> "$GITHUB_STEP_SUMMARY" && echo '```' >> "$GITHUB_STEP_SUMMARY" && cat build.log >> "$GITHUB_STEP_SUMMARY" && echo '```' >> "$GITHUB_STEP_SUMMARY" && exit 1)
+          npx vite build > build.log 2>&1 || (cat build.log && exit 1)
+
+      - name: Report failure log
+        if: failure()
+        shell: bash
+        run: |
+          BODY=$(head -n 50 build.log; tail -n 50 build.log)
+          PAYLOAD=$(jq -n --arg b "Build failed on ${{ matrix.os }}:\`\`\`\n$BODY\n\`\`\`" '{body: $b}')
+          curl -s -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments \
+            -d "$PAYLOAD"
 
       - name: Build package for Windows
         if: matrix.os == 'windows-latest'
