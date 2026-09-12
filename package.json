@@ -13,10 +13,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac dmg zip",
+    "dist:mac": "npm run build && electron-builder --mac dmg zip -c.mac.identity=null -c.publish=never",
     "start": "npm run build && electron .",
     "test": "node --test",
-    "dist:win": "npm run build && electron-builder --win --x64"
+    "dist:win": "npm run build && electron-builder --win --x64 -c.publish=never"
   },
   "dependencies": {
     "blockly": "latest",
@@ -54,7 +54,8 @@
         "dmg",
         "zip"
       ],
-      "category": "public.app-category.education"
+      "category": "public.app-category.education",
+      "identity": null
     },
     "win": {
       "target": [
@@ -71,6 +72,6 @@
     }
   },
   "engines": {
-    "node": "24.x"
+    "node": ">=20.0.0"
   }
 }
