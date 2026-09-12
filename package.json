@@ -10,7 +10,7 @@
     "dev": "vite",
     "dev:app": "node scripts/dev-app.mjs",
     "tello:station": "node scripts/tello-station.mjs",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc -p tsconfig.app.json --noEmit && vite build",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac dmg zip --publish never",
